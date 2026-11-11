@@ -15,7 +15,7 @@ window.__test = {
  get rooms(){return rooms;},get doors(){return doors;},get windows(){return windows;},get vents(){return vents;},get viewTransform(){return viewTransform;},get gesture(){return editorGesture;},get editorMode(){return editorMode;},
  get grid(){return grid;},get concentration(){return concentration;},get velocity(){return velocity;},get elapsed(){return elapsed;},
  get parameters(){return userParameters;},
- windowGeometry,validWindow,validateRooms,buildGrid,passageFraction,passageGeometry,passageOverlap,ventPosition,makeVent,addVentAt,renderVents,reconfigureConnections,configureWindowAirflow,stepPM,solveFlow,windowQ,roomAverages,roomPercentiles,rebuild,
+ windowGeometry,validWindow,validateRooms,buildGrid,passageFraction,passageGeometry,passageOverlap,doorLeakArea,doorFlowAtPa,ventPosition,makeVent,addVentAt,renderVents,reconfigureConnections,configureWindowAirflow,stepPM,solveFlow,windowQ,roomAverages,roomPercentiles,rebuild,
  importModel:(rr,dd=[],ww=[])=>{
   rooms=rr;doors=dd;windows=ww;vents=[];
   purifier={x:(rr[0]?.x||0)+(rr[0]?.w||3)/2,y:(rr[0]?.y||0)+(rr[0]?.h||3)/2};
@@ -125,9 +125,11 @@ class AeroPlanTest(unittest.TestCase):
         self.assertAlmostEqual(result['min'],48,places=2)
         self.assertAlmostEqual(result['max'],48,places=2)
 
-    def test_closed_doors_do_not_create_fictitious_cross_window_flow(self):
-        result=self.eval('''()=>{document.getElementById('ach').value=0;const m=window.__test;const A={id:'A',name:'A',x:0,y:0,w:3,h:3,emission:0,extraAch:0},B={id:'B',name:'B',x:3,y:0,w:3,h:3,emission:0,extraAch:0};const d={id:'D',a:'A',b:'B',width:1.2,pos:.5,open:false,kind:'door'},w={id:'W1',roomId:'A',side:'left',pos:.5,width:1.2,height:1.4,state:'open',q100:3,gapMm:5,openPercent:10};m.importModel([A,B],[d],[w,{...w,id:'W2',roomId:'B',side:'right'}]);return m.grid.windowSources.map(x=>x.netQ);}''')
-        self.assertTrue(all(abs(v)<1e-6 for v in result))
+    def test_closed_door_is_leaky_but_flow_is_smaller_than_open_door(self):
+        result=self.eval('''()=>{document.getElementById('ach').value=0;const m=window.__test;const A={id:'A',name:'A',x:0,y:0,w:3,h:3,emission:0,extraAch:0},B={id:'B',name:'B',x:3,y:0,w:3,h:3,emission:0,extraAch:0};const d={id:'D',a:'A',b:'B',width:1.2,pos:.5,open:false,kind:'door'},w={id:'W1',roomId:'A',side:'left',pos:.5,width:1.2,height:1.4,state:'open',q100:3,gapMm:5,openPercent:10};m.importModel([A,B],[d],[w,{...w,id:'W2',roomId:'B',side:'right'}]);let closed=Math.abs(m.grid.pressureResult.doorFlows.D||0);d.open=true;m.reconfigureConnections();let opened=Math.abs(m.grid.pressureResult.doorFlows.D||0);d.open=false;d.gapMm=0;d.frameLeakCm2=0;m.reconfigureConnections();let sealed=Math.abs(m.grid.pressureResult.doorFlows.D||0);return {closed,opened,sealed};}''')
+        self.assertGreater(result['closed'], 0.001)
+        self.assertGreater(result['opened'], result['closed']*1.3)
+        self.assertEqual(result['sealed'], 0)
 
     def test_invalid_import_preserves_previous_plan(self):
         before=self.eval('window.__test.rooms.length')
