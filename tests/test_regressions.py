@@ -12,12 +12,12 @@ from playwright.sync_api import sync_playwright
 BASE = Path(__file__).resolve().parent.parent
 HOOK = '''
 window.__test = {
- get rooms(){return rooms;},get doors(){return doors;},get windows(){return windows;},
+ get rooms(){return rooms;},get doors(){return doors;},get windows(){return windows;},get vents(){return vents;},get viewTransform(){return viewTransform;},get gesture(){return editorGesture;},get editorMode(){return editorMode;},
  get grid(){return grid;},get concentration(){return concentration;},get velocity(){return velocity;},get elapsed(){return elapsed;},
  get parameters(){return userParameters;},
- windowGeometry,validWindow,validateRooms,buildGrid,passageFraction,reconfigureConnections,configureWindowAirflow,stepPM,solveFlow,windowQ,roomAverages,roomPercentiles,rebuild,
+ windowGeometry,validWindow,validateRooms,buildGrid,passageFraction,passageGeometry,passageOverlap,ventPosition,makeVent,addVentAt,renderVents,reconfigureConnections,configureWindowAirflow,stepPM,solveFlow,windowQ,roomAverages,roomPercentiles,rebuild,
  importModel:(rr,dd=[],ww=[])=>{
-  rooms=rr;doors=dd;windows=ww;
+  rooms=rr;doors=dd;windows=ww;vents=[];
   purifier={x:(rr[0]?.x||0)+(rr[0]?.w||3)/2,y:(rr[0]?.y||0)+(rr[0]?.h||3)/2};
   renderEditors();rebuild();
  },

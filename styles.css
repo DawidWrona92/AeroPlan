@@ -60,3 +60,14 @@
 .time-limit-value input{width:115px;flex:none}
 .time-limit-value input:disabled{opacity:.45;cursor:not-allowed}
 .time-limit-badge{color:#93d9d1;border:1px solid #315867;background:#102e39;padding:4px 8px;border-radius:7px;font-size:11px;white-space:nowrap}
+
+.local-probe{padding:8px 12px;font-size:12px;color:#c6e3f3;background:#0d1b2b;border-top:1px solid #284058}
+
+/* AeroPlan 2.8: indywidualne kratki wentylacyjne */
+.vent-item{background:#11283c;border:1px solid #31566c;border-radius:9px;padding:10px;margin:8px 0}
+.vent-item .window-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.vent-item .window-title strong{font-size:12px;color:#bdeef7}
+.vent-item .window-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vent-item .window-fields .field{min-width:0}
+.vent-item .window-fields input,.vent-item .window-fields select{max-width:100%;font-size:12px}
+@media(max-width:480px){.vent-item .window-fields{grid-template-columns:1fr}}
