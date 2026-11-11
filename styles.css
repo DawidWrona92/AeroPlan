@@ -71,3 +71,10 @@
 .vent-item .window-fields .field{min-width:0}
 .vent-item .window-fields input,.vent-item .window-fields select{max-width:100%;font-size:12px}
 @media(max-width:480px){.vent-item .window-fields{grid-template-columns:1fr}}
+
+/* 2.9 – adjustable leakage of closed internal doors */
+.door-leak-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0 4px}
+.door-leak-settings label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
+.door-leak-settings input{width:100%;min-width:0;box-sizing:border-box}
+.door-flow-note{font-size:11px;line-height:1.45;color:var(--muted);margin:4px 0 0}
+@media(max-width:440px){.door-leak-settings{grid-template-columns:1fr}}

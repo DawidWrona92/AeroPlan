@@ -1,4 +1,4 @@
-# AeroPlan 2.8 — symulacja PM₂.₅ i przepływu w mieszkaniu
+# AeroPlan 2.10 — symulacja PM₂.₅ i przepływu w mieszkaniu
 
 AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porównania różnych lokalizacji oczyszczacza powietrza i sprawdzenia wpływu wentylacji. Od wersji 2.7 korzysta z **dwóch powiązanych uproszczonych modeli**:
 
@@ -13,25 +13,50 @@ AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porówn
 2. Otwórz `index.html` w nowej przeglądarce. Nic nie trzeba instalować; aplikacja działa offline.
 3. Do rozwoju można użyć `python -m http.server 8000`.
 
-## Co nowego w 2.8
+### Nowe w 2.9 — nieszczelność zamkniętych drzwi
+
+- Zamknięte drzwi nie są traktowane jako szczelna bariera: sieć ciśnień przepuszcza powietrze przez szczelinę pod skrzydłem oraz równoważną nieszczelność przy ościeżnicy. Model PM₂.₅ i przepuszczalność krawędzi siatki są aktualizowane wraz ze stanem drzwi.
+- Parametry edytowane osobno dla każdych drzwi: **wysokość szczeliny 0–35 mm** oraz **dodatkowy przekrój nieszczelności ościeżnicy 0–200 cm²**. Domyślnie **10 mm i 4 cm²**; to scenariuszowy punkt startowy, **nie pomiar** ani cecha wszystkich drzwi.
+- Dla drzwi o szerokości 80 cm szczelina 10 mm daje 80 cm² podcięcia (plus domyślne, orientacyjne 4 cm² nieszczelności ościeżnicy). W polskich wytycznych wentylacji zalecane jest co najmniej **80 cm²** transferu dla pokojów i **200 cm²** dla kuchni i pomieszczeń sanitarnych; rzeczywisty przepływ zależy również od różnicy ciśnień.
+- Dla zamkniętych drzwi używane jest równanie otworu `Q = C_d × A × √(2|Δp|/ρ)`, gdzie `C_d=0,6`, `ρ=1,204 kg/m³`. To przybliżenie dla szczeliny; nie jest wynikiem badania szczelności konkretnych drzwi ani geometrycznie wierną symulacją strugi pod skrzydłem.
+- **Domyślnie zachowane są aktualne stężenia i czas** po zmianie parametrów. JSON **v7** zapisuje właściwości drzwi; starsze JSON automatycznie dostają domyślne wartości. Ustawienie obu parametrów na 0 dopuszcza model drzwi w pełni uszczelnionych.
+- Przy bardzo drobnej siatce drzwiowe szczeliny są reprezentowane jako **ułamkowo przepuszczalna granica komórek**; pionowa geometria szczeliny nadal nie jest rozwiązywana w 3D. Od wersji 2.10 sumaryczny strumień drzwiowy z sieci ciśnień jest wymuszany na odpowiadających mu krawędziach siatki 2D.
+
+Źródła: [Stowarzyszenie Polska Wentylacja — wytyczne stolarki wewnętrznej](https://www.wentylacja.org.pl/upload/files/GT_domy_jednorodzinne/SPWWytyczneRekuperacja.pdf) i [wymagania normowe](https://www.wentylacja.org.pl/pages-62.html); [CIBSE Guide A — właściwości przepływowe drzwi](https://ierga.com/wp-content/uploads/sites/2/2017/10/CIBSE-Guide-A-Environmental-design.pdf).
+
+## Runda korekt fundamentu 2.10 (audyt niezależny)
+
+**Naprawione i testowane:**
+
+1. Przeniesienie oczyszczacza zachowuje czas, aktualne pola PM₂.₅ i sumę usuniętego pyłu; ponownie oblicza jedynie kierunek/pole wydmuchu i pobór filtra.
+2. Usunięto nakładanie się mechanizmów napływu z nieszczelności: ACH występuje **tylko jako przepuszczalność ciśnieniowa obudowy**. Penetracja PM jest naliczana przy odpowiednich zewnętrznych strumieniach napływu, nie przy odpływie.
+3. Każdy otwór drzwiowy, także szczelina pod zamkniętymi drzwiami, uzyskuje **sumaryczny strumień na siatce 2D zgodny ze strumieniem sieci ciśnień**. Projekcja modyfikuje prędkości tylko wewnątrz pokojów, nie na narzuconych krawędziach przejść.
+4. Zlikwidowano sztuczne skalowanie wszystkich prędkości do 1,25 m/s; ograniczenie stabilności odbywa się przez krok czasowy. Import i konfiguracja kontrolują zmianę kroku siatki; jeżeli nie da się odwzorować przejścia o niezerowym strumieniu, aplikacja ostrzega zamiast udawać dokładność.
+5. Okna pozostają aktywne w sieci wiatrowej także gdy referencyjne Δp = 0 Pa; limit wymiany 0 m³/h dla otwartego okna jest respektowany. Ujednolicono rho = 1,204 kg/m³.
+6. Poprawiono opis nawiewu **brutto**, numerację sekcji, domyślne wartości HTML i ograniczenie szerokości drzwi. Pokazano skumulowaną korektę ujemnych stężeń (powinna pozostać zerowa); ujednolicono import.
+7. Ranking otrzymuje świeży, **niezależny** stan ciśnień dla wspólnego scenariusza wiatru bez podmuchów i jednakowy stan początkowy dla każdego ustawienia. W scenariuszu dwóch pokojów z dwoma oknami po przeciwnych stronach siatki 0,30 / 0,20 / 0,15 m zachowały kolejność dwóch ustawień, a dawki różniły się o mniej niż 1,5% w teście 180 s.
+
+**Ważne:** to kontrola spójności obliczeń, a nie eksperymentalna walidacja dla rzeczywistego mieszkania. Nie potwierdza dokładności bezwzględnych prognoz ani stabilności rankingu w każdym układzie.
+
+## Funkcje wprowadzone w 2.8
 
 - **Widoczne kratki wentylacyjne**: na planie wyświetlane są odrębne symbole nawiewu (niebieski) i wywiewu (fioletowy). Każda kratka ma własne pomieszczenie, pozycję X/Y (w metrach od lewego górnego rogu) oraz zadaną wydajność [m³/h]. Można dodać kilka kratek w jednym pomieszczeniu, zmienić ich typ lub usunąć.
 - **Przesuwanie myszą**: narzędzie „Przesuń element” umożliwia przesuwanie drzwi i stałych otworów po wspólnej ścianie, okien po ich ścianach zewnętrznych oraz kratek wewnątrz pokojów. Pozycje są zapisywane z dokładnością 1 cm; ruch kratek jest ograniczony do granic ich pokoju.
 - **Spójne obliczenia**: każda kratka stanowi osobny, zadany strumień dla solvera ciśnień i osobny punkt nawiewu/wywiewu w modelu transportu. Przestawienie drzwi, okna lub kratki przelicza przepływ, zachowując czas i lokalne stężenia.
 - **Osobne źródła PM₂.₅**: etykieta `PM +... µg/h` przy pokoju oznacza emisję zanieczyszczeń, a nie nawiew/wywiew. Domyślna kuchnia ma emisję 1350 µg/h i **przykładową** kratkę wywiewną 30 m³/h. Te liczby nie są pomiarem domowej kuchni.
-- **Kompatybilność**: zapis JSON v6 przechowuje kratki. Starsze plany z polami `supplyM3h`/`exhaustM3h` są przenoszone do widocznych kratek (bez podwójnego liczenia przepływu).
+- **Kompatybilność**: zapis JSON v7 przechowuje kratki, okna i nieszczelności drzwi. Starsze plany z polami `supplyM3h`/`exhaustM3h` są przenoszone do widocznych kratek (bez podwójnego liczenia przepływu).
 - **Testy regresyjne**: dodatkowe przypadki dotyczą dodawania i usuwania kratek, przeciągania elementów, migracji JSON i zachowania wyników symulacji; łącznie 29 testów.
 
 ## Zmiany w 2.7
 
 - **Przepływ wywołany ciśnieniem**: wiatr ma prędkość m/s i kierunek (0° na prawo; 90° w dół), a elewacje mają różne ciśnienia umowne `Cp` (+0,6 od nawietrznej, do −0,3 od zawietrznej). Zamknięte okna: prawo potęgowe dla przecieków, otwarte: równanie otworu z miękkim ograniczeniem maksymalnej wymiany.
-- **Bilans pomiędzy pokojami**: otwarte przejścia mogą przepuszczać strumień pomiędzy pomieszczeniami; zamknięte drzwi go blokują. Rozwiązywane są ciśnienia referencyjne wszystkich pokojów, tak aby suma strumieni na danym węźle była bliska zeru.
+- **Bilans pomiędzy pokojami**: otwarte przejścia przepuszczają strumień pomiędzy pomieszczeniami; **zamknięte drzwi nie są szczelne** i umożliwiają mniejszy przepływ przez szczeliny. Rozwiązywane są ciśnienia referencyjne wszystkich pokojów, tak aby suma strumieni na danym węźle była bliska zeru.
 - **Wietrzenie na przestrzał**: dwa okna na różnych ścianach mogą tworzyć przeciąg; pojedyncze okno również może stanowić dopływ przy działającym wyciągu. W całkowicie szczelnym pokoju z niekompensowanym wyciągiem solver pokazuje błąd bilansu i nie generuje fikcyjnego strumienia.
-- **Wentylacja mechaniczna lub zadany strumień**: każda kratka ma własną wydajność w m³/h oraz pozycję X/Y mierzoną od lewego górnego rogu pokoju (interfejs od wersji 2.8). Nie modelujemy kanałów ani kształtu kratek, a sam stały strumień nie odwzorowuje samoczynnej zmienności wentylacji grawitacyjnej. Stary parametr ACH pozostaje jako *umowna nieszczelność obudowy i mała rezerwowa wymiana dwukierunkowa*, nie jest modelem kratki wentylacyjnej.
+- **Wentylacja mechaniczna lub zadany strumień**: każda kratka ma własną wydajność w m³/h oraz pozycję X/Y mierzoną od lewego górnego rogu pokoju (interfejs od wersji 2.8). Nie modelujemy kanałów ani kształtu kratek, a sam stały strumień nie odwzorowuje samoczynnej zmienności wentylacji grawitacyjnej. Parametr ACH oznacza w modelu **referencyjną przepuszczalność nieszczelności obudowy przy 4 Pa**, a nie rzeczywistą gwarantowaną wymianę powietrza. Przepływ zależy od uzyskanej różnicy ciśnień. Nie naliczamy już dodatkowej, arbitralnej relaksacji 0,20 × ACH w równaniu PM₂.₅.
 - **Podmuchy**: w scenariuszu okresowo zmienia się prędkość wiatru o ustawiony procent. Solver przelicza pole przepływu co 120 sekund czasu symulowanego, a zmienność ma charakter deterministyczny. Nie jest to losowy, zmierzony przebieg wiatru.
 - **Mniejsze komórki PM₂.₅**: 0,30 / 0,20 / 0,15 m. Przy rozległym planie siatka adaptuje maksymalną liczbę komórek dla wydajności. Mniejszy krok zwiększa rozdzielczość, ale nie gwarantuje dokładniejszej prognozy.
 - **Rozkład lokalny**: surowe wartości PM₂.₅ w komórkach bez graficznego rozmywania, odczyt pod kursorem i P90 w każdym pomieszczeniu. Wyświetlane stężenia nadal są uśrednione po wysokości pokoju.
-- **Wskaźnik błędu bilansu** (m³/h) ostrzega o niekompatybilnej wentylacji; metryka przepływu odpowiada symulowanemu dopływowi netto.
+- **Wskaźnik błędu bilansu** (m³/h) ostrzega o niekompatybilnej wentylacji; metryka przepływu pokazuje **sumę dopływów brutto** (równą odpływom w stanie zbilansowanym), a nie przepływ netto.
 - **Zapis w JSON** zachowuje parametry ciśnień, wentylacji i rozdzielczości; import ze starszych wersji uzupełnia nowe dane wartościami domyślnymi.
 
 ## Jak oceniać ustawienie oczyszczacza?
@@ -46,12 +71,12 @@ AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porówn
 
 ## Fizyczne przybliżenia i niepewności
 
-- Węzeł ciśnienia na pokój zakłada wspólne średnie ciśnienie, a w 2D pole z projekcji rozdziela przepływ. Przepływ na poszczególnych drzwiach z sieci ciśnień nie jest narzucony dokładnie jako warunek brzegowy solvera 2D; rozdział strumieni przez wiele przejść może więc odbiegać od wyliczeń sieci.
+- Węzeł ciśnienia na pokój zakłada wspólne średnie ciśnienie, a w 2D pole z projekcji rozdziela przepływ. Na krawędziach drzwi narzucane są teraz przepływy z sieci ciśnień (m³/h), a pole 2D jest korygowane osobno wewnątrz każdego pomieszczenia. To zapewnia zgodność **strumienia całkowitego na każdym przejściu**, lecz nie dokładny profil turbulentny strugi przez drzwi i pod skrzydłem.
 - Współczynniki ciśnienia na fasadzie są idealizacją; osłonięcie przez inne budynki, wysokość okna, wiry od balkonów czy kształt budynku nie są znane.
 - Otwarte okna wytwarzają uproszczony przepływ kierunkowy i dodatkową wymianę lokalną, ale **nie modelujemy realistycznego kształtu turbulentnego strumienia** ani wymiany wywołanej wyporem cieplnym (efekt kominowy), ani siły termicznej od grzejników/klimatyzacji.
 - Wydmuch oczyszczacza ma przybliżoną siłę i kierunek, niezależnie od deklarowanego CADR. Nie znamy charakterystyki wentylatora ani geometrii wlotu/wylotu.
-- Nie modelujemy mebli, człowieka ani pionowych strug, a stężenia PM₂.₅ są uśrednione po wysokości, nie po pokoju.
-- Aby zachować stabilność, prędkości pola 2D są ograniczane do 1,25 m/s. Jeśli ten limit zadziała, zmniejszona zostaje również wymiana używana w bilansie PM. Metryki uwzględniają ograniczenie, ale scenariusz należy traktować jako obarczony większym błędem.
+- Nie modelujemy mebli, człowieka ani pionowych strug, a stężenia PM₂.₅ są uśrednione po wysokości (lokalnie w planie, nie w całym pokoju).
+- Nie stosuje się już globalnego sztucznego ograniczenia prędkości do 1,25 m/s. Krok transportu PM₂.₅ zmniejsza się przy większej prędkości. Przy bardzo dużych przepływach siatka 2D nadal może wymagać dodatkowego zagęszczenia i kontroli dokładności.
 - Brak modelu temperatury, wilgoci, CO₂, alergenów i strat filtra; to **symulacja wyłącznie PM₂.₅**.
 
 ## Model matematyczny — odniesienia
