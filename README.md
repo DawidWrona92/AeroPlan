@@ -1,63 +1,71 @@
-# AeroPlan 2.6
+# AeroPlan 2.7 — symulacja PM₂.₅ i przepływu w mieszkaniu
 
-AeroPlan to interaktywna aplikacja w HTML, CSS i JavaScript do szkicowania mieszkania oraz **orientacyjnego** porównywania ustawień oczyszczacza powietrza. Oblicza i wizualizuje transport PM₂.₅ w uproszczonym modelu 2D.
+AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porównania różnych lokalizacji oczyszczacza powietrza i sprawdzenia wpływu wentylacji. Od wersji 2.7 korzysta z **dwóch powiązanych uproszczonych modeli**:
 
-> **Nie jest to pełny symulator CFD 3D, pomiar jakości powietrza ani narzędzie do wyznaczania narażenia zdrowotnego.** Wyniki porównują scenariusze i wymagają weryfikacji pomiarami.
+1. **Wielostrefowy model ciśnień i przepływów** (pokoje jako węzły, okna i drzwi jako opory, nawiew/wywiew, ciśnienie wiatru na elewacji, bilans masowy). Kod w `airflow-network.js`.
+2. **Lokalny dwuwymiarowy model transportu zanieczyszczeń**: pole prędkości na siatce, adwekcja–dyfuzja i bilans PM₂.₅, dopływ z zewnątrz, źródła pyłu, osadzanie i filtracja CADR. Kod w `app.js`.
+
+> **Nie jest to walidowane CFD 3D, rzeczywisty pomiar ani program projektowania instalacji wentylacyjnych.** Podane wartości ciśnień, prędkości, lokalnych stężeń i rankingi są orientacyjne. Bez danych o budynku, wietrze, meblach i urządzeniach nie ma podstaw do deklarowania dokładności absolutnej.
 
 ## Uruchomienie
 
-Pobierz `index.html`, `styles.css` i `app.js` do jednego katalogu i otwórz `index.html` w aktualnej przeglądarce. Instalacja bibliotek ani dostęp do sieci nie są wymagane. Alternatywnie uruchom `python -m http.server 8000` w katalogu projektu i przejdź do `http://localhost:8000`.
+1. Pobierz `index.html`, `styles.css`, `airflow-network.js`, `app.js` do jednego folderu.
+2. Otwórz `index.html` w nowej przeglądarce. Nic nie trzeba instalować; aplikacja działa offline.
+3. Do rozwoju można użyć `python -m http.server 8000`.
 
-## Co można zrobić?
+## Co nowego w 2.7
 
-- Narysować, przesuwać i wymiarować pokoje (min. 0,5 × 0,5 m), w tym pokoje o niestandardowych wymiarach.
-- Dodawać drzwi, stale otwarte przejścia i okna; zmieniać stan drzwi i okien podczas symulacji.
-- Ustawiać infiltrację przez zamknięte okna, rozszczelnienie i otwarcie, różnicę ciśnień, wymianę przez pozostałą wentylację oraz rzeczywiste stężenie PM₂.₅ na zewnątrz.
-- Włączyć scenariusz **wiatru** i wybrać jego kierunek na planie: 0° z lewej na prawą, 90° z góry na dół. Model równoważy nawiew i wywiew przez okna w obrębie połączonych pokojów. Pojedyncze okno bez ujścia powietrza pozostaje przybliżoną wymianą lokalną. Wartość kierunku jest **założeniem użytkownika**, nie pomiarem.
-- Regulować CADR, kierunek wydmuchu, rozmiar i położenie oczyszczacza.
-- Odczytywać średnie PM₂.₅ w pokojach, sumę usuniętego pyłu oraz orientacyjne natężenie wymiany okiennej.
-- Uruchomić symulację bez limitu czasu albo włączyć opcjonalne ograniczenie czasu.
-- Porównać ustawienia oczyszczacza: pozycję środkową w każdym pokoju oraz aktualną pozycję użytkownika (nie jest to pełna optymalizacja ciągła).
-- Eksportować/importować plan w JSON oraz zapisywać obraz PNG.
+- **Przepływ wywołany ciśnieniem**: wiatr ma prędkość m/s i kierunek (0° na prawo; 90° w dół), a elewacje mają różne ciśnienia umowne `Cp` (+0,6 od nawietrznej, do −0,3 od zawietrznej). Zamknięte okna: prawo potęgowe dla przecieków, otwarte: równanie otworu z miękkim ograniczeniem maksymalnej wymiany.
+- **Bilans pomiędzy pokojami**: otwarte przejścia mogą przepuszczać strumień pomiędzy pomieszczeniami; zamknięte drzwi go blokują. Rozwiązywane są ciśnienia referencyjne wszystkich pokojów, tak aby suma strumieni na danym węźle była bliska zeru.
+- **Wietrzenie na przestrzał**: dwa okna na różnych ścianach mogą tworzyć przeciąg; pojedyncze okno również może stanowić dopływ przy działającym wyciągu. W całkowicie szczelnym pokoju z niekompensowanym wyciągiem solver pokazuje błąd bilansu i nie generuje fikcyjnego strumienia.
+- **Wentylacja mechaniczna**: każdy pokój ma opcjonalną wydajność nawiewu/wywiewu w m³/h oraz pozycję X/Y kratki mierzoną od lewego górnego rogu pokoju. Nie modelujemy kanałów ani kształtu kratek. Stary parametr ACH pozostaje jako *umowna nieszczelność obudowy i mała rezerwowa wymiana dwukierunkowa*, nie jest modelem kratki wentylacyjnej.
+- **Podmuchy**: w scenariuszu okresowo zmienia się prędkość wiatru o ustawiony procent. Solver przelicza pole przepływu co 120 sekund czasu symulowanego, a zmienność ma charakter deterministyczny. Nie jest to losowy, zmierzony przebieg wiatru.
+- **Mniejsze komórki PM₂.₅**: 0,30 / 0,20 / 0,15 m. Przy rozległym planie siatka adaptuje maksymalną liczbę komórek dla wydajności. Mniejszy krok zwiększa rozdzielczość, ale nie gwarantuje dokładniejszej prognozy.
+- **Rozkład lokalny**: surowe wartości PM₂.₅ w komórkach bez graficznego rozmywania, odczyt pod kursorem i P90 w każdym pomieszczeniu. Wyświetlane stężenia nadal są uśrednione po wysokości pokoju.
+- **Wskaźnik błędu bilansu** (m³/h) ostrzega o niekompatybilnej wentylacji; metryka przepływu odpowiada symulowanemu dopływowi netto.
+- **Zapis w JSON** zachowuje parametry ciśnień, wentylacji i rozdzielczości; import ze starszych wersji uzupełnia nowe dane wartościami domyślnymi.
 
-## Naprawy w wersji 2.6
+## Jak oceniać ustawienie oczyszczacza?
 
-- **Kolizje pokoi** są wykrywane w dokładnej geometrii prostokątów, nie tylko w komórkach siatki. Edycje prowadzące do kolizji są odrzucane z przywróceniem wcześniejszych wartości. Nieprawidłowy import JSON nie zastępuje prawidłowego planu.
-- **Okna** nie mogą nachodzić na siebie. Edycja wymiarów i położenia jest walidowana. Okno zachowuje zadaną szerokość przy krańcu ściany poprzez przesunięcie środka, a nie ucięcie połowy okna.
-- **Wąskie drzwi i przejścia** są modelowane za pomocą ułamkowej przepuszczalności krawędzi siatki, zamiast jedynie próbkowania pojedynczych punktów.
-- **Zmiana drzwi w panelu** przebudowuje połączenia, zachowując czas i bieżące stężenia; tak jak kliknięcie drzwi na planie.
-- **Małe pomieszczenia** mają objętości komórek przeskalowane do dokładnej kubatury pokoju. Transport między komórkami używa tych objętości, aby zachowywać bilans masy. Pozostaje błąd geometryczny przybliżenia kształtu komórek i lokalnego pola prędkości przy granicach ścian.
-- **Okna a przepływ**: dla dwóch lub więcej otworów nawiewnych/wywiewnych w tej samej połączonej strefie można włączyć szacowany przepływ wywołany kierunkiem wiatru. Pole prędkości i transport PM₂.₅ korzystają ze wspólnie bilansowanych strumieni. Pozostała wymiana powietrza jest reprezentowana jako wymiana lokalna.
-- Dodano automatyczne testy regresyjne i GitHub Actions.
+1. Odwzoruj układ pokoi, a szczególnie okna, drzwi i rzeczywiste otwory.
+2. Ustaw znane z pomiaru PM₂.₅ na zewnątrz; początkowe 24 µg/m³ to tylko przykład.
+3. Podaj wymiary pomieszczeń, CADR dla drobnych cząstek oraz rzeczywistą wydajność nawiewu/wywiewu, jeśli jest znana.
+4. Porównaj warianty przy zamkniętych i otwartych oknach, różnych kierunkach wiatru, wyłączonej wentylacji mechanicznej i jej pracy.
+5. Sprawdź średnią, P90, lokalne stężenia i **30-minutowy ranking**. Ranking używa statycznego pola przepływu wybranego scenariusza i nie odtwarza osobno porywów; ma ograniczoną wartość przy wielogodzinnym lub bardzo niestabilnym wietrze.
+6. Nie interpretuj drobnej różnicy między lokalizacjami jako przewagi: przetestuj stabilność rankingu przy siatce 0,30 i 0,15 m oraz w kilku scenariuszach.
+7. Gdy masz czujnik PM₂.₅, zweryfikuj model w praktyce: przestaw urządzenie i obserwuj spadek PM przez 1–2 godziny przy porównywalnej pogodzie.
 
-## Ograniczenia modelu
+## Fizyczne przybliżenia i niepewności
 
-- To pole 2D uśrednione po wysokości, bez obliczania turbulencji 3D, wpływu mebli, temperatury, konwekcji czy rzeczywistej charakterystyki wentylatora.
-- Różnica ciśnień i kierunek wiatru są parametrami scenariusza. **Nie rozwiązujemy rzeczywistego układu ciśnień budynku ani pełnych warunków brzegowych.** Model nie symuluje przeciągu wynikającego z pojedynczego otwartego okna, gdy brak ujścia w tej samej strefie.
-- Parametr ACH dla pozostałej wentylacji jest przybliżoną wymianą stężenia, a nie dokładnym obliczeniem strumienia na rzeczywistych kratkach i nawiewnikach.
-- Komórki siatki mają zastępcze objętości zachowujące objętości pokojów; nie jest to adaptacyjny solwer na pełnych komórkach częściowych. Wąskie wnęki i elementy mniejsze od siatki nadal mogą być nieprawidłowo odwzorowane.
-- Wartość PM₂.₅ na zewnątrz wprowadzana jest ręcznie. Domyślna wartość jest przykładowa, nie jest bieżącym odczytem z czujnika.
-- Rankingi i lokalne stężenia **nie powinny być interpretowane jako wyniki zweryfikowanej symulacji CFD** ani jako pomiar rzeczywistej skuteczności oczyszczacza.
+- Węzeł ciśnienia na pokój zakłada wspólne średnie ciśnienie, a w 2D pole z projekcji rozdziela przepływ. Przepływ na poszczególnych drzwiach z sieci ciśnień nie jest narzucony dokładnie jako warunek brzegowy solvera 2D; rozdział strumieni przez wiele przejść może więc odbiegać od wyliczeń sieci.
+- Współczynniki ciśnienia na fasadzie są idealizacją; osłonięcie przez inne budynki, wysokość okna, wiry od balkonów czy kształt budynku nie są znane.
+- Otwarte okna wytwarzają uproszczony przepływ kierunkowy i dodatkową wymianę lokalną, ale **nie modelujemy realistycznego kształtu turbulentnego strumienia** ani wymiany wywołanej wyporem cieplnym (efekt kominowy), ani siły termicznej od grzejników/klimatyzacji.
+- Wydmuch oczyszczacza ma przybliżoną siłę i kierunek, niezależnie od deklarowanego CADR. Nie znamy charakterystyki wentylatora ani geometrii wlotu/wylotu.
+- Nie modelujemy mebli, człowieka ani pionowych strug, a stężenia PM₂.₅ są uśrednione po wysokości, nie po pokoju.
+- Aby zachować stabilność, prędkości pola 2D są ograniczane do 1,25 m/s. Jeśli ten limit zadziała, zmniejszona zostaje również wymiana używana w bilansie PM. Metryki uwzględniają ograniczenie, ale scenariusz należy traktować jako obarczony większym błędem.
+- Brak modelu temperatury, wilgoci, CO₂, alergenów i strat filtra; to **symulacja wyłącznie PM₂.₅**.
 
-## Testy dla programistów
+## Model matematyczny — odniesienia
 
-Wymagany Python 3.12+ z Playwright i Chromium. Samo uruchomienie aplikacji nie wymaga Pythona ani zależności.
+- NIST [CONTAM](https://www.nist.gov/services-resources/software/contam), [User Guide](https://www.nist.gov/publications/contam-user-guide-and-program-documentation-version-34) — wielostrefowe ciśnienia i transport zanieczyszczeń, prawo potęgowe dla nieszczelności, równanie przepływu przez otwory.
+- [ASHRAE Handbook, Indoor Environmental Modeling](https://handbook.ashrae.org/handbooks/F25/SI/F25_Ch13/F25_Ch13_si.aspx) — model sieci przepływowej między strefami.
+- [EPA — Guide to Air Cleaners in the Home](https://www.epa.gov/indoor-air-quality-iaq/guide-air-cleaners-home) — odpowiedni CADR, miejsce ustawienia, brak przeszkód przy wentylatorze.
+
+## Testy i organizacja
 
 ```bash
 node --check app.js
+node --check airflow-network.js
 python -m pip install playwright==1.57.0
 python -m playwright install chromium
 python -m unittest discover -s tests -v
 ```
 
-W CI GitHub Actions instalowana jest przeglądarka i uruchamiane są scenariusze regresji. W lokalnym systemie Linux z Chromium w systemie można wskazać `AEROPLAN_CHROMIUM=/usr/bin/chromium`.
+Automatyczne testy Playwright w `tests/test_regressions.py` uruchamiają testy geometrii, pól stężeń, bilansu sieci, wiatru, przeciągów, nawiewu i wywiewu. Workflow GitHub Actions uruchamia te testy na branchach i PR.
 
-## Organizacja plików
+- `index.html`, `styles.css` — UI.
+- `airflow-network.js` — oddzielony, testowalny solver ciśnień węzłowych.
+- `app.js` — edytor, siatka, transport PM, rendering i obsługa JSON.
+- `tests/test_regressions.py` — testy przeglądarkowe.
 
-- `index.html` — interfejs
-- `styles.css` — style
-- `app.js` — edytor, model i renderowanie
-- `tests/test_regressions.py` — testy integracyjne i numeryczne
-- `.github/workflows/ci.yml` — automatyczna kontrola składni i testy
-
-Kod modelu znajduje się nadal w jednym pliku `app.js`; docelowy podział na moduły geometrii, solvera, UI i obsługi plików jest osobnym, większym zadaniem refaktoryzacyjnym.
+**Kolejne kroki dla dokładności:** walidacja na pomiarach w rzeczywistym mieszkaniu; geometria mebli i przeszkód; przepływ przez wywiew grawitacyjny i efekt kominowy; niezależna weryfikacja 3D na kilku przykładach; wielowariantowa optymalizacja ustawienia oczyszczacza (nie pojedynczy scenariusz pogody).
