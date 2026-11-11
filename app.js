@@ -997,7 +997,8 @@ function endCanvasGesture(e,cancel=false){
  if(g.kind==='move'){
   const moving=rooms.find(r=>r.id===g.roomId);
   if(!moving)return;
-  if(!candidateValid(g.preview,g.roomId)){setStatus('Nie przesunięto pokoju: kolizja lub wyjście poza plan. Zmiana cofnięta.',true);render(performance.now());return;}  Object.assign(moving,{x:cm(g.preview.x),y:cm(g.preview.y)});renderEditors();rebuild();setStatus('Przesunięto „'+moving.name+'” na X='+fmt(moving.x,2)+' m, Y='+fmt(moving.y,2)+' m. Sprawdź połączenia drzwi.');
+  if(!candidateValid(g.preview,g.roomId)){setStatus('Nie przesunięto pokoju: kolizja lub wyjście poza plan. Zmiana cofnięta.',true);render(performance.now());return;}
+  Object.assign(moving,{x:cm(g.preview.x),y:cm(g.preview.y)});renderEditors();rebuild();setStatus('Przesunięto „'+moving.name+'” na X='+fmt(moving.x,2)+' m, Y='+fmt(moving.y,2)+' m. Sprawdź połączenia drzwi.');
  }
 }
 canvas.addEventListener('pointerup',e=>endCanvasGesture(e));
@@ -1040,3 +1041,4 @@ $('saveJson').addEventListener('click',()=>{getInputs();const data={version:7,ro
  selectedRoomId=null;rooms=rr;doors=dd;windows=ww;vents=importVents;purifier={x:num(doc.purifier?.x,1,0,35),y:num(doc.purifier?.y,1,0,35)};userParameters={...DEFAULTS};for(const k of Object.keys(DEFAULTS))if(doc.parameters&&doc.parameters[k]!==undefined)userParameters[k]=doc.parameters[k];outsideManual=doc.outsideManual===true;syncFields();renderEditors();rebuild();setStatus('Zaimportowano konfigurację.');}catch(err){setStatus('Nie udało się zaimportować JSON: '+err.message,true);}e.target.value='';});
  preset();requestAnimationFrame(tick);
 })();
+
