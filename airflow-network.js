@@ -8,7 +8,9 @@
  const sign=x=>x<0?-1:1;
  function powerFlow(dp,coefficient,exponent,limit=Infinity){
   if(!coefficient||limit===0||!Number.isFinite(dp))return 0;
-  const magnitude=coefficient*(Math.pow(Math.abs(dp)+EPS,exponent)-Math.pow(EPS,exponent));
+  // Smooth derivative at zero without the several-percent offset at normal pressure drops.
+  // For |dp| >> EPS this tends to coefficient * |dp|**exponent.
+  const magnitude=coefficient*Math.abs(dp)*Math.pow(dp*dp+EPS*EPS,(exponent-1)/2);
   return sign(dp)*(Number.isFinite(limit)&&limit>0?limit*Math.tanh(Math.max(0,magnitude)/limit):Math.max(0,magnitude));
  }
  function cp(side,angle){
@@ -64,14 +66,14 @@
     const dp=link.extPressure-pressures[link.room],q=flowExternal(link,pressures[link.room]);
     residual[link.room]+=q;
     if(diag){const frac=Number.isFinite(link.limit)&&link.limit>0?q/link.limit:0;
-     const derivative=link.limit===0?0:link.base*link.exponent*Math.pow(Math.abs(dp)+EPS,link.exponent-1)*(1-Math.min(.99999999,frac*frac));
+     const derivative=link.limit===0?0:link.base*Math.pow(dp*dp+EPS*EPS,(link.exponent-3)/2)*(EPS*EPS+link.exponent*dp*dp)*(1-Math.min(.99999999,frac*frac));
      diag[link.room][link.room]+=derivative;
     }
    }
    for(const link of internal){
     const dp=pressures[link.a]-pressures[link.b],q=flowDoor(link,pressures[link.a],pressures[link.b]);
     residual[link.a]-=q;residual[link.b]+=q;
-    if(diag){const derivative=link.base*link.exponent*Math.pow(Math.abs(dp)+EPS,link.exponent-1);
+    if(diag){const derivative=link.base*Math.pow(dp*dp+EPS*EPS,(link.exponent-3)/2)*(EPS*EPS+link.exponent*dp*dp);
      diag[link.a][link.a]+=derivative;diag[link.b][link.b]+=derivative;
      diag[link.a][link.b]-=derivative;diag[link.b][link.a]-=derivative;
     }

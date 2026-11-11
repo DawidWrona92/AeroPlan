@@ -1,4 +1,4 @@
-# AeroPlan 2.10 — symulacja PM₂.₅ i przepływu w mieszkaniu
+# AeroPlan 2.11 — symulacja PM₂.₅ i przepływu w mieszkaniu
 
 AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porównania różnych lokalizacji oczyszczacza powietrza i sprawdzenia wpływu wentylacji. Od wersji 2.7 korzysta z **dwóch powiązanych uproszczonych modeli**:
 
@@ -12,6 +12,17 @@ AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porówn
 1. Pobierz `index.html`, `styles.css`, `airflow-network.js`, `app.js` do jednego folderu.
 2. Otwórz `index.html` w nowej przeglądarce. Nic nie trzeba instalować; aplikacja działa offline.
 3. Do rozwoju można użyć `python -m http.server 8000`.
+
+## Stabilizacja 2.11 — końcowe poprawki kodu po audycie
+
+- Walidacja importu JSON jest transakcyjna: błędne zakresy, nieistniejące pomieszczenia, nakładające się przejścia i niepoprawna geometria nie zastępują prawidłowego planu. Zachowano import starszych, prawidłowych projektów.
+- Połączono trzy nasłuchiwacze ruchu myszy w jeden kontroler, bez zmiany sposobu rysowania i przesuwania.
+- Ranking oblicza średnią ekspozycję metodą trapezów w każdym kroku czasowym; wynik nie zależy już od arbitralnej częstotliwości próbkowania co 15 kroków. Wybór pozycji z rankingu zachowuje czas i stężenia.
+- Poprawiono wygładzenie równania przepływu przy zerowej różnicy ciśnień, zgodnie z pochodną w solverze Newtona; dodano testy aproksymacji prawa przepływu.
+- Naprawiono blokowanie rankingu przy nierozwiązywalnej wentylacji i kilka przypadków błędnej edycji drzwi oraz geometrii pokoi.
+- Pełna tabela statusów C1–C12 i L1–L7: **[AUDIT-RESOLUTION.md](AUDIT-RESOLUTION.md)**.
+
+**Nie jest to przejście na zweryfikowane CFD 3D.** Niedokładności współczynników naporu wiatru, rozkładu pionowego i aerodynamiki oczyszczacza pozostają jawne; ich wyeliminowanie wymaga rozszerzenia modelu, nie poprawy JavaScript. Sam wybór pierwszego oczyszczacza nie wymaga własnych pomiarów, jednak wyniki powinny być oceniane scenariuszowo.
 
 ### Nowe w 2.9 — nieszczelność zamkniętych drzwi
 

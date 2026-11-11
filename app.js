@@ -98,16 +98,26 @@ function nearestSharedEdge(p){let best=null,dist=Infinity;for(let i=0;i<rooms.le
  const d=Math.hypot(perp-e.at,Math.max(e.from-along,0,along-e.to));
  if(d<dist){dist=d;best={a,b,e,along};}
  }return dist<=.45?best:null;}
-function passageOverlap(d,pos=d.pos){const a=rooms.find(r=>r.id===d.a),b=rooms.find(r=>r.id===d.b),edge=a&&b?shared(a,b):null;if(!edge)return true;
+function passageOverlap(d,pos=d.pos,roomList=rooms,doorList=doors){const a=roomList.find(r=>r.id===d.a),b=roomList.find(r=>r.id===d.b),edge=a&&b?shared(a,b):null;if(!edge)return true;
  const span=edge.to-edge.from,w=Math.min(d.width,span),center=edge.from+clamp(span*pos,w/2,span-w/2);
- for(const other of doors){if(other.id===d.id)continue;if(!((other.a===d.a&&other.b===d.b)||(other.a===d.b&&other.b===d.a)))continue;
+ for(const other of doorList){if(other.id===d.id)continue;if(!((other.a===d.a&&other.b===d.b)||(other.a===d.b&&other.b===d.a)))continue;
   const ow=Math.min(other.width,span),oc=edge.from+clamp(span*other.pos,ow/2,span-ow/2);
   if(Math.abs(center-oc)<(w+ow)/2-.02)return true;
  }
  return false;
 }
+function validateAttachedPassages(roomList=rooms,doorList=doors){
+ for(const d of doorList){
+  const a=roomList.find(r=>r.id===d.a),b=roomList.find(r=>r.id===d.b);
+  const edge=a&&b?shared(a,b):null;
+  if(!edge||d.width>edge.to-edge.from+.01)
+   throw Error('Zmiana rozłączyłaby istniejące drzwi albo skróciła wspólną ścianę poniżej ich szerokości. Najpierw usuń lub przesuń przejście.');
+ }
+}
 function createDoorAt(p,kind='door'){const hit=nearestSharedEdge(p);if(!hit){setStatus('Kliknij dokładnie we wspólną ścianę dwóch sąsiadujących pomieszczeń (do 45 cm od niej).',true);return;}
- const {a,b,e,along}=hit,span=e.to-e.from,width=Math.min(1,Math.max(.3,span-.05));
+ const {a,b,e,along}=hit,span=e.to-e.from;
+ if(span<.3){setStatus('Wspólna ściana jest zbyt krótka na przejście o szerokości 30 cm.',true);return;}
+ const width=Math.min(1,span);
  const pos=clamp((along-e.from)/span,width/(2*span),1-width/(2*span));
  const proposed={id:uid(),a:a.id,b:b.id,width,pos,open:true,kind,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2};if(passageOverlap(proposed)){setStatus('W tym miejscu jest już przejście. Przesuń istniejące lub wskaż inny fragment ściany.',true);return;}doors.push(proposed);renderDoors();reconfigureConnections();setStatus((kind==='opening'?'Dodano stały otwór':'Dodano drzwi')+' między „'+a.name+'” i „'+b.name+'”.');}
 
@@ -170,8 +180,7 @@ function emptyPlan(){if(rooms.length&& !confirm('Wyczyścić obecny plan? Przed 
 function getInputs(){const o={};for(const k of Object.keys(DEFAULTS)){
  const e=$(k);
  if(k==='timeLimitEnabled'||k==='windFlowEnabled'){o[k]=Boolean(e?.checked);continue;}
- o[k]=num(e?.value,DEFAULTS[k],k==='height'?2:k==='maxMinutes'?1:k==='purifierDiameter'?.2:k==='gustPeriod'?30:k==='gridStep'?.12:0,
-  k==='mixing'?.15:k==='height'?6:k==='windSpeed'?20:k==='gustPercent'?90:k==='gustPeriod'?3600:k==='gridStep'?.35:k==='deltaP'?100:k==='pmPenetration'?1:k==='maxWindowAch'?30:k==='purifierDiameter'?1.2:k==='ach'?5:k==='deposition'?3:k==='maxMinutes'?525600:k==='orientation'||k==='windDirection'?360:k==='jet'?2:k==='cadr'?1800:1000);
+ o[k]=num(e?.value,DEFAULTS[k],...INPUT_LIMITS[k]);
  }userParameters=o;
 }
 function simulationTimeLimit(p=userParameters){return p.timeLimitEnabled?p.maxMinutes*60:Infinity;}
@@ -204,7 +213,7 @@ function updateTargetOptions(){const target=$('targetRoom'),old=target.value;tar
 function renderEditors(){migrateLegacyVents();updateTargetOptions();const host=$('rooms');host.innerHTML='';rooms.forEach((r)=>{const el=document.createElement('div');el.className='room';el.dataset.roomId=r.id;el.innerHTML=`<div class="room-head"><input data-key="name" aria-label="Nazwa pomieszczenia"><button data-select type="button" title="Zaznacz na planie">Zaznacz</button><button data-remove type="button" class="danger" title="Usuń pokój" aria-label="Usuń pokój ${escapeHtml(r.name)}">×</button></div><div class="mini-fields">${[['x','X [m]'],['y','Y [m]'],['w','Szer. [m]'],['h','Dł. [m]'],['emission','Emisja pyłu [µg/h]'],['extraAch','Nieszczel. +[1/h]']].map(([k,l])=>`<div><label>${l}</label><input data-key="${k}" type="number" step="${k==='emission'?'50':k==='extraAch'?'0.05':'0.01'}" min="0"></div>`).join('')}</div>`;host.appendChild(el);for(const input of el.querySelectorAll('[data-key]')){const k=input.dataset.key;input.value=r[k];input.addEventListener('change',()=>{
   const previous=r[k];const value=k==='name'?input.value:String(input.value).trim()===''?r[k]:num(input.value,r[k],k==='w'||k==='h'?.5:0,k==='emission'?100000:k==='extraAch'?5:k==='supplyM3h'||k==='exhaustM3h'?600:k==='supplyX'||k==='exhaustX'?r.w:k==='supplyY'||k==='exhaustY'?r.h:40);
   r[k]=value;
-  try{validateRooms(rooms);if(['x','y','w','h'].includes(k))for(const w of windows)if(w.roomId===r.id&&!validWindow(w))throw Error('Zmiana wymiarów uniemożliwiłaby prawidłowe umieszczenie istniejącego okna.');}
+  try{validateRooms(rooms);if(['x','y','w','h'].includes(k)){validateAttachedPassages();}if(['x','y','w','h'].includes(k))for(const w of windows)if(w.roomId===r.id&&!validWindow(w))throw Error('Zmiana wymiarów uniemożliwiłaby prawidłowe umieszczenie istniejącego okna.');}
   catch(error){r[k]=previous;renderEditors();setStatus(error.message+' Zmiana została odrzucona.',true);return;}
   if(['w','h'].includes(k)){for(const v of vents)if(v.roomId===r.id){v.x=cm(clamp(v.x,.05,Math.max(.05,r.w-.05)));v.y=cm(clamp(v.y,.05,Math.max(.05,r.h-.05)));}}invalidate('Zmieniono parametry pokoju.');renderEditors();renderDoors();rebuild();
  });}el.querySelector('[data-select]').addEventListener('click',()=>{selectRoom(r.id);setTool('move');setStatus('Zaznaczono pokój „'+r.name+'”. Przeciągnij go albo wybierz „Usuń pokój”.');});el.querySelector('[data-remove]').addEventListener('click',()=>requestDeleteRoom(r.id));});renderDoors();renderWindows();renderVents();updateRoomSelection();}
@@ -395,8 +404,11 @@ function renderDoors(){const host=$('doors');host.innerHTML='';for(const d of do
     <label>Nieszczelność ościeżnicy [cm²]<input data-role="frameLeakCm2" type="number" min="0" max="200" step="1" title="Dodatkowy równoważny przekrój, nie zmierzona szczelność"></label>
    </div><div class="door-flow-note">Zamknięte drzwi: ≈ ${fmt(doorLeakArea({...d,open:false})*10000,0)} cm² przekroju; przy Δp=2 Pa ≈ ${fmt(doorFlowAtPa({...d,open:false}),1)} m³/h. Wartości modelowe, zależne od rzeczywistego ciśnienia.</div>`}`;
   host.appendChild(el);el.querySelector('[data-role=width]').value=d.width;el.querySelector('[data-role=pos]').value=Math.round(d.pos*100);el.querySelector('[data-role=open]').checked=d.open;if(!isOpening(d)){el.querySelector('[data-role=gapMm]').value=doorGapMm(d);el.querySelector('[data-role=frameLeakCm2]').value=doorFrameCm2(d);}
-  for(const input of el.querySelectorAll('[data-role]'))input.addEventListener('change',()=>{const old={...d};const role=input.dataset.role;if(role==='width')d.width=num(input.value,1,.3,8);else if(role==='pos')d.pos=num(input.value,50,0,100)/100;else if(role==='open')d.open=input.checked;else if(role==='gapMm')d.gapMm=num(input.value,DEFAULT_DOOR_GAP_MM,0,35);else if(role==='frameLeakCm2')d.frameLeakCm2=num(input.value,DEFAULT_DOOR_FRAME_CM2,0,200);else if(role==='kind'){d.kind=input.value==='opening'?'opening':'door';if(isOpening(d))d.open=true;}else d[role]=input.value;if(passageOverlap(d)){Object.assign(d,old);renderDoors();setStatus('Drzwi lub otwór nachodzą na inne przejście. Zmiana odrzucona.',true);return;}renderDoors();reconfigureConnections();});
-  el.querySelector('[data-remove]').addEventListener('click',()=>{doors=doors.filter(v=>v!==d);renderDoors();rebuild();});if(!shared(rooms.find(r=>r.id===d.a)||{},rooms.find(r=>r.id===d.b)||{})){el.querySelectorAll('select').forEach(x=>x.classList.add('door-invalid'));el.title='Pomieszczenia nie mają wspólnej ściany';}
+  for(const input of el.querySelectorAll('[data-role]'))input.addEventListener('change',()=>{const old={...d};const role=input.dataset.role;if(role==='width')d.width=num(input.value,1,.3,8);else if(role==='pos')d.pos=num(input.value,50,0,100)/100;else if(role==='open')d.open=input.checked;else if(role==='gapMm')d.gapMm=num(input.value,DEFAULT_DOOR_GAP_MM,0,35);else if(role==='frameLeakCm2')d.frameLeakCm2=num(input.value,DEFAULT_DOOR_FRAME_CM2,0,200);else if(role==='kind'){d.kind=input.value==='opening'?'opening':'door';if(isOpening(d))d.open=true;}else d[role]=input.value;let invalid=null;
+    try{validateAttachedPassages();if(passageOverlap(d))throw Error('Drzwi lub otwór nachodzą na inne przejście.');}
+    catch(error){invalid=error.message;}
+    if(invalid){Object.assign(d,old);renderDoors();setStatus(invalid+' Zmiana odrzucona.',true);return;}renderDoors();reconfigureConnections();});
+  el.querySelector('[data-remove]').addEventListener('click',()=>{doors=doors.filter(v=>v!==d);renderDoors();reconfigureConnections();});if(!shared(rooms.find(r=>r.id===d.a)||{},rooms.find(r=>r.id===d.b)||{})){el.querySelectorAll('select').forEach(x=>x.classList.add('door-invalid'));el.title='Pomieszczenia nie mają wspólnej ściany';}
  }
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -884,20 +896,51 @@ function placePurifier(x,y,roomId=null){
 }
 function canvasXY(e){const box=canvas.getBoundingClientRect(),coordX=(e.clientX-box.left)*canvas.width/box.width,coordY=(e.clientY-box.top)*canvas.height/box.height;const{scale,offX,offY}=viewTransform;return{x:(coordX-offX)/scale,y:(coordY-offY)/scale};}
 function download(filename,blob){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function runComparison(){if(!grid)return;benchmarkToken++;const token=benchmarkToken;playing=false;$('play').textContent='▶ Start';$('compare').disabled=true;$('ranking').innerHTML='';$('compareProgress').style.width='0';const p={...userParameters,gustPercent:0},g=buildGrid();g.windowSources=mapWindowSources(g,p);configureWindowAirflow(g,p,0);
- if(g.unmappedDoorFlow>.05){setStatus('Ranking niewiarygodny: siatka nie odwzorowuje przepływu przez drzwi. Wybierz mniejszą komórkę.',true);return;}
+async function runComparison(){if(!grid)return;benchmarkToken++;const token=benchmarkToken;playing=false;$('play').textContent='▶ Start';$('compare').disabled=true;$('ranking').innerHTML='';$('compareProgress').style.width='0';try{const p={...userParameters,gustPercent:0},g=buildGrid();g.windowSources=mapWindowSources(g,p);configureWindowAirflow(g,p,0);
+
+ if(!g.pressureResult?.converged||g.unmappedDoorFlow>.05){
+  setStatus('Nie można porównać ustawień: brak poprawnego bilansu ciśnień lub przepływu przez drzwi. Skoryguj model wentylacji albo wybierz drobniejszą siatkę.',true);
+  return;
+ }
  const time=Math.min(1800,simulationTimeLimit(p)),targetId=$('targetRoom').value,targetIndex=rooms.findIndex(r=>r.id===targetId),candidates=[{label:'Bez oczyszczacza',pos:null}];for(let i=0;i<rooms.length;i++){const r=rooms[i];const pos=purifierPositionInRoom(r,r.x+r.w/2,r.y+r.h/2,g);if(pos)candidates.push({label:r.name+' · środek',pos});}if(!candidates.some(c=>c.pos&&Math.hypot(c.pos.x-purifier.x,c.pos.y-purifier.y)<.35))candidates.push({label:'Moje ustawienie',pos:{...purifier}});
- const results=[];const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));try{
+ const results=[];const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
  for(let idx=0;idx<candidates.length;idx++){
-  if(token!==benchmarkToken)return;const candidate=candidates[idx];$('compareStatus').textContent=`Obliczanie wariantu ${idx+1}/${candidates.length}: ${candidate.label}…`;await yieldUI();const settings={...p,cadr:candidate.pos?p.cadr:0,jet:candidate.pos?p.jet:0};const loc=candidate.pos||purifier;const vf=solveFlow(g,loc,settings);const filter=candidate.pos?buildIntake(g,loc):{weights:new Float64Array(g.n),efficiency:0};let c=initConcentration(g),b=new Float64Array(g.n);const dt=vf.scalarDt,steps=Math.ceil(time/dt);let sumDose=0,lastAvg=0;
-  for(let step=0;step<steps;step++){if(token!==benchmarkToken)return;const delta=Math.min(dt,time-step*dt);if(delta<=0)break;stepPM(g,c,b,vf,filter,settings,delta,null);[c,b]=[b,c];if(step%15===0||step===steps-1){let sm=0,ct=0;for(let k=0;k<g.n;k++)if(g.ids[k]>=0&&(targetIndex<0||g.ids[k]===targetIndex)){sm+=c[k]*g.cellVolumes[k];ct+=g.cellVolumes[k];}lastAvg=sm/ct;}sumDose+=lastAvg*delta;if(step%480===0){$('compareProgress').style.width=fmt((idx+(step/steps))/candidates.length*100,0)+'%';await yieldUI();}}
+  if(token!==benchmarkToken)return;const candidate=candidates[idx];$('compareStatus').textContent=`Obliczanie wariantu ${idx+1}/${candidates.length}: ${candidate.label}…`;await yieldUI();const settings={...p,cadr:candidate.pos?p.cadr:0,jet:candidate.pos?p.jet:0};const loc=candidate.pos||purifier;const vf=solveFlow(g,loc,settings);const filter=candidate.pos?buildIntake(g,loc):{weights:new Float64Array(g.n),efficiency:0};let c=initConcentration(g),b=new Float64Array(g.n);const dt=vf.scalarDt,steps=Math.ceil(time/dt);
+  const chosen=[];let chosenVolume=0;
+  for(let k=0;k<g.n;k++)if(g.ids[k]>=0&&(targetIndex<0||g.ids[k]===targetIndex)){chosen.push(k);chosenVolume+=g.cellVolumes[k];}
+  const average=field=>{let sum=0;for(const k of chosen)sum+=field[k]*g.cellVolumes[k];return sum/Math.max(1e-12,chosenVolume);};
+  let sumDose=0,lastAvg=average(c);
+  for(let step=0;step<steps;step++){
+   if(token!==benchmarkToken)return;
+   const delta=Math.min(dt,time-step*dt);if(delta<=0)break;
+   stepPM(g,c,b,vf,filter,settings,delta,null);[c,b]=[b,c];
+   const nextAvg=average(c);
+   sumDose+=(lastAvg+nextAvg)*.5*delta;lastAvg=nextAvg;
+   if(step%480===0){$('compareProgress').style.width=fmt((idx+(step/steps))/candidates.length*100,0)+'%';await yieldUI();}
+  }
   results.push({...candidate,final:lastAvg,dose:sumDose/time});$('compareProgress').style.width=fmt((idx+1)/candidates.length*100,0)+'%';
  }
  if(token!==benchmarkToken)return;rankingResults=results;drawRanking();$('compareStatus').textContent=`Wyniki dla ${Math.round(time/60)} min; im niższe stężenie w wybranym obszarze, tym lepiej. Ranking orientacyjny.`;setStatus('Porównanie ukończone: wszystkie warianty miały identyczne parametry początkowe.');
  }catch(e){setStatus('Błąd porównania: '+e.message,true);}finally{$('compare').disabled=false;}}
 function drawRanking(){if(!rankingResults)return;const root=$('ranking');root.innerHTML='';const base=rankingResults[0],sort=rankingResults.slice(1).sort((a,b)=>a.dose-b.dose),max=Math.max(...rankingResults.map(r=>r.dose),.1);const p=document.createElement('p');p.className='comparison-meta';p.innerHTML=`Bez oczyszczacza: <strong>${fmt(base.final,1)} µg/m³</strong> po teście.` ;root.appendChild(p);
- sort.forEach((r,i)=>{const item=document.createElement('div');item.className='rankitem'+(i===0?' best':'');const gain=base.dose>0?100*(1-r.dose/base.dose):0;item.innerHTML=`<strong>${i+1}. ${escapeHtml(r.label)} <span class="muted">· ${fmt(r.final,1)} µg/m³</span></strong><div class="minibar"><div class="mini"><div style="width:${clamp(r.dose/max*100,0,100)}%"></div></div><span class="unit" style="min-width:50px">${gain>=0?'-':'+'}${fmt(Math.abs(gain),0)}%*</span></div><button>Ustaw</button>`;item.querySelector('button').addEventListener('click',()=>{purifier={...r.pos};rebuild();setStatus(`Oczyszczacz ustawiony w pokoju: ${r.label}.`);});root.appendChild(item);});const note=document.createElement('div');note.className='footnote';note.textContent='* Zmiana średniej ekspozycji względem wariantu bez filtra w czasie testu. Nie jest to zmierzona skuteczność urządzenia. Podobne wyniki należy traktować jako remis.';root.appendChild(note);}
-$('preset').addEventListener('click',preset);$('newplan').addEventListener('click',emptyPlan);$('addRoom').addEventListener('click',()=>{if(rooms.length>=14)return alert('Model obsługuje maksymalnie 14 pokoi.');let pos=null;for(let y=0;y<=32&&!pos;y+=.5)for(let x=0;x<=32;x+=.5){const candidate={x,y,w:3,h:3};if(candidateValid(candidate,null)){pos=candidate;break;}}if(!pos){setStatus('Brak miejsca na pokój 3×3 m. Użyj narzędzia rysowania lub zmień układ.',true);return;}rooms.push(room('Nowy pokój',pos.x,pos.y,3,3,0));renderEditors();rebuild();setTool('move');});$('addDoor').addEventListener('click',()=>{if(rooms.length<2)return;const pairs=[];for(let i=0;i<rooms.length;i++)for(let j=i+1;j<rooms.length;j++)if(shared(rooms[i],rooms[j]))pairs.push([rooms[i],rooms[j]]);if(!pairs.length){setStatus('Najpierw ustaw pokoje tak, aby miały wspólną ścianę.',true);return;}const pair=pairs.find(([a,b])=>!doors.some(d=>d.a===a.id&&d.b===b.id||d.a===b.id&&d.b===a.id))||pairs[0];doors.push({id:uid(),a:pair[0].id,b:pair[1].id,width:1.2,pos:.5,open:true,kind:'door'});renderDoors();rebuild();});
+ sort.forEach((r,i)=>{const item=document.createElement('div');item.className='rankitem'+(i===0?' best':'');const gain=base.dose>0?100*(1-r.dose/base.dose):0;item.innerHTML=`<strong>${i+1}. ${escapeHtml(r.label)} <span class="muted">· ${fmt(r.final,1)} µg/m³</span></strong><div class="minibar"><div class="mini"><div style="width:${clamp(r.dose/max*100,0,100)}%"></div></div><span class="unit" style="min-width:50px">${gain>=0?'-':'+'}${fmt(Math.abs(gain),0)}%*</span></div><button>Ustaw</button>`;item.querySelector('button').addEventListener('click',()=>{placePurifier(r.pos.x,r.pos.y);setStatus(`Oczyszczacz ustawiony w pokoju: ${r.label}. Zachowano czas i aktualne stężenia.`);});root.appendChild(item);});const note=document.createElement('div');note.className='footnote';note.textContent='* Zmiana średniej ekspozycji względem wariantu bez filtra w czasie testu. Nie jest to zmierzona skuteczność urządzenia. Podobne wyniki należy traktować jako remis.';root.appendChild(note);}
+$('preset').addEventListener('click',preset);$('newplan').addEventListener('click',emptyPlan);$('addRoom').addEventListener('click',()=>{if(rooms.length>=14)return alert('Model obsługuje maksymalnie 14 pokoi.');let pos=null;for(let y=0;y<=32&&!pos;y+=.5)for(let x=0;x<=32;x+=.5){const candidate={x,y,w:3,h:3};if(candidateValid(candidate,null)){pos=candidate;break;}}if(!pos){setStatus('Brak miejsca na pokój 3×3 m. Użyj narzędzia rysowania lub zmień układ.',true);return;}rooms.push(room('Nowy pokój',pos.x,pos.y,3,3,0));renderEditors();rebuild();setTool('move');});$('addDoor').addEventListener('click',()=>{if(rooms.length<2)return;const pairs=[];for(let i=0;i<rooms.length;i++)for(let j=i+1;j<rooms.length;j++)if(shared(rooms[i],rooms[j]))pairs.push([rooms[i],rooms[j]]);if(!pairs.length){setStatus('Najpierw ustaw pokoje tak, aby miały wspólną ścianę.',true);return;}let proposed=null;
+ for(const [a,b] of pairs){
+  const edge=shared(a,b),span=edge.to-edge.from;
+  if(span<.3)continue;
+  for(const width of [Math.min(1.2,span),Math.min(.8,span),Math.min(.5,span)]){
+   if(width<.3)continue;
+   for(const pos of [.5,.15,.85,.05,.95,.25,.75,.375,.625]){
+    const candidate={id:uid(),a:a.id,b:b.id,width,pos,open:true,kind:'door',
+     gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2};
+    if(!passageOverlap(candidate)){proposed=candidate;break;}
+   }
+   if(proposed)break;
+  }
+  if(proposed)break;
+ }
+ if(!proposed){setTool('door');setStatus('Brak miejsca na nowe drzwi w automatycznie sprawdzonych punktach. Wskaż wolny odcinek wspólnej ściany.',true);return;}
+ doors.push(proposed);renderDoors();reconfigureConnections();});
 $('addOpening').addEventListener('click',()=>{setTool('opening');setStatus('Kliknij wspólną ścianę dwóch pokoi, aby dodać stały otwór.');});
 $('addWindow').addEventListener('click',()=>{setTool('window');setStatus('Kliknij ścianę zewnętrzną pokoju, aby umieścić okno.');});
 $('addSupply').addEventListener('click',()=>setTool('supply'));$('addExhaust').addEventListener('click',()=>setTool('exhaust'));
@@ -963,7 +1006,7 @@ canvas.addEventListener('pointerdown',e=>{
  }
  if(editorGesture){canvas.setPointerCapture(e.pointerId);render(performance.now());}
 });
-canvas.addEventListener('pointermove',e=>{
+function updateEditorGesture(e){
  if(!editorGesture||!viewTransform)return;
  const raw=canvasXY(e),pos=magnetPoint(gridPoint(raw));
  if(editorGesture.kind==='room')editorGesture.end=pos;
@@ -976,7 +1019,7 @@ canvas.addEventListener('pointermove',e=>{
   else if(g.itemType==='window'){const w=windows.find(x=>x.id===g.id),r=w&&rooms.find(r=>r.id===w.roomId);if(r){const along=(w.side==='left'||w.side==='right')?raw.y:raw.x,start=(w.side==='left'||w.side==='right')?r.y:r.x,len=(w.side==='left'||w.side==='right')?r.h:r.w;g.preview={pos:cm(clamp((along-start)/len,0,1))};}}
  }
  render(performance.now());
-});
+}
 function endCanvasGesture(e,cancel=false){
  const g=editorGesture;editorGesture=null;dragging=false;if(!g)return;
  if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
@@ -998,11 +1041,16 @@ function endCanvasGesture(e,cancel=false){
   const moving=rooms.find(r=>r.id===g.roomId);
   if(!moving)return;
   if(!candidateValid(g.preview,g.roomId)){setStatus('Nie przesunięto pokoju: kolizja lub wyjście poza plan. Zmiana cofnięta.',true);render(performance.now());return;}
+  try{
+   const hypothetical=rooms.map(r=>r.id===g.roomId?{...r,...g.preview}:r);
+   validateAttachedPassages(hypothetical);
+   for(const w of windows)if(!validWindow(w,hypothetical,windows))throw Error('Przeniesienie pokoju odłączyłoby okno od ściany zewnętrznej.');
+  }catch(error){setStatus(error.message+' Przesunięcie anulowane.',true);render(performance.now());return;}
   Object.assign(moving,{x:cm(g.preview.x),y:cm(g.preview.y)});renderEditors();rebuild();setStatus('Przesunięto „'+moving.name+'” na X='+fmt(moving.x,2)+' m, Y='+fmt(moving.y,2)+' m. Sprawdź połączenia drzwi.');
  }
 }
 canvas.addEventListener('pointerup',e=>endCanvasGesture(e));
-canvas.addEventListener('pointermove',e=>{
+function updateEditorHover(e){
  if(editorGesture||!viewTransform||!['delete','window','item'].includes(editorMode))return;
  const p=canvasXY(e);
  if(editorMode==='item'){const hit=hitVent(p)||hitPassage(p)||hitWindow(p);canvas.style.cursor=hit?'grab':'crosshair';return;}
@@ -1020,25 +1068,165 @@ canvas.addEventListener('pointermove',e=>{
   const g=proposal.ok?windowGeometry(proposal.w):null,oldg=old?.proposal?.ok?windowGeometry(old.proposal.w):null;
   if(g?.center!==oldg?.center||g?.side!==oldg?.side||g?.r?.id!==oldg?.r?.id||!!g!==!!oldg)render(performance.now());
  }
-});
-canvas.addEventListener('pointermove',e=>{
+}
+function updateCanvasProbe(e){
  if(!grid||!concentration||!viewTransform)return;
  const p=canvasXY(e),k=indexAt(p.x,p.y);
  const probe=$('localProbe');if(!probe)return;
  if(k<0){probe.textContent='Najedź myszką na pokój, aby odczytać lokalne PM₂.₅ (bez uśredniania).';return;}
  const ri=grid.ids[k],x=(k%grid.nx+.5)*grid.step,y=(Math.floor(k/grid.nx)+.5)*grid.step;
  probe.textContent=`${rooms[ri].name} · PM₂.₅ w komórce: ${fmt(concentration[k],1)} µg/m³ · Pokoju ciśnienie: ${fmt(grid.pressureResult?.pressures?.[ri]||0,2)} Pa · środek komórki: (${fmt(x,2)}, ${fmt(y,2)}) m · bok siatki: ${fmt(grid.step,2)} m`;
+}
+// One pointermove listener owns drag previews, hover feedback and live PM probe.
+canvas.addEventListener('pointermove',e=>{
+ updateEditorGesture(e);
+ updateEditorHover(e);
+ updateCanvasProbe(e);
 });
 canvas.addEventListener('pointerleave',()=>{editorHover=null;canvas.style.cursor='crosshair';if(['delete','window','item'].includes(editorMode)&&!editorGesture)render(performance.now());});
 canvas.addEventListener('pointercancel',e=>endCanvasGesture(e,true));
 
-$('saveJson').addEventListener('click',()=>{getInputs();const data={version:7,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};download('aeroplan-mieszkanie.json',new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}));});$('loadJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const doc=JSON.parse(await file.text());
- if(doc.parameters){for(const [key,value] of Object.entries(doc.parameters)){if(!(key in DEFAULTS))continue;const booleanKey=key==='windFlowEnabled'||key==='timeLimitEnabled';if(booleanKey?typeof value!=='boolean':!(typeof value==='number'&&Number.isFinite(value)))throw Error('Niepoprawny parametr symulacji: '+key);}}
- if(!Array.isArray(doc.rooms)||doc.rooms.length>14)throw Error('Niepoprawna lista pokojów.');const rr=doc.rooms.map(x=>({id:String(x.id||uid()),name:String(x.name||'Pokój').slice(0,36),x:num(x.x,0,0,35),y:num(x.y,0,0,35),w:num(x.w,3,.5,35),h:num(x.h,3,.5,35),emission:num(x.emission,0,0,100000),extraAch:num(x.extraAch,0,0,5),supplyM3h:num(x.supplyM3h,0,0,600),exhaustM3h:num(x.exhaustM3h,0,0,600),supplyX:num(x.supplyX,.3,0,35),supplyY:num(x.supplyY,.3,0,35),exhaustX:num(x.exhaustX,Math.max(.3,Number(x.w||3)-.3),0,35),exhaustY:num(x.exhaustY,Math.max(.3,Number(x.h||3)-.3),0,35)}));const idset=new Set(rr.map(r=>r.id));if(idset.size!==rr.length)throw Error('Powtarzające się identyfikatory pokojów.');const dd=(Array.isArray(doc.doors)?doc.doors:[]).filter(d=>idset.has(String(d.a))&&idset.has(String(d.b))).map(d=>({id:uid(),a:String(d.a),b:String(d.b),width:num(d.width,1,.3,8),pos:num(d.pos,.5,0,1),open:d.open!==false,kind:d.kind==='opening'?'opening':'door',gapMm:num(d.gapMm,DEFAULT_DOOR_GAP_MM,0,35),frameLeakCm2:num(d.frameLeakCm2,DEFAULT_DOOR_FRAME_CM2,0,200)}));const ww=(Array.isArray(doc.windows)?doc.windows:[]).filter(w=>idset.has(String(w.roomId))).map(w=>({id:uid(),roomId:String(w.roomId),side:['left','right','top','bottom'].includes(w.side)?w.side:'top',pos:num(w.pos,.5,0,1),width:num(w.width,1.2,.3,5),height:num(w.height,1.35,.3,3),state:['closed','tilt','open'].includes(w.state)?w.state:'closed',q100:num(w.q100,3,0,100),gapMm:num(w.gapMm,5,0,50),openPercent:num(w.openPercent,10,0,100)}));validateRooms(rr);
- for(const w of ww)if(!validWindow(w,rr,ww))throw Error('Nieprawidłowa geometria albo nakładające się okna w importowanym pliku.');
- for(const d of dd)if(!shared(rr.find(r=>r.id===d.a),rr.find(r=>r.id===d.b)))throw Error('Przejście w pliku JSON nie łączy sąsiadujących pokojów.');
- const vv=(Array.isArray(doc.vents)?doc.vents:[]);if(vv.length>80)throw Error('Maksymalnie 80 kratek wentylacyjnych.');const importVents=vv.map(v=>{const r=rr.find(r=>r.id===String(v.roomId));if(!r)throw Error('Kratka wentylacyjna wskazuje nieistniejący pokój.');const type=v.type==='exhaust'?'exhaust':v.type==='supply'?'supply':null;if(!type)throw Error('Nieprawidłowy typ kratki wentylacyjnej.');return{id:uid(),roomId:r.id,type,rate:num(v.rate,0,0,600),x:cm(num(v.x,r.w*.5,.05,Math.max(.05,r.w-.05))),y:cm(num(v.y,r.h*.5,.05,Math.max(.05,r.h-.05)))}});
- selectedRoomId=null;rooms=rr;doors=dd;windows=ww;vents=importVents;purifier={x:num(doc.purifier?.x,1,0,35),y:num(doc.purifier?.y,1,0,35)};userParameters={...DEFAULTS};for(const k of Object.keys(DEFAULTS))if(doc.parameters&&doc.parameters[k]!==undefined)userParameters[k]=doc.parameters[k];outsideManual=doc.outsideManual===true;syncFields();renderEditors();rebuild();setStatus('Zaimportowano konfigurację.');}catch(err){setStatus('Nie udało się zaimportować JSON: '+err.message,true);}e.target.value='';});
+// Parameters have a single source of range constraints, shared by the UI and JSON import.
+const INPUT_LIMITS={
+ height:[2,6],mixing:[0,.15],initial:[0,1000],outside:[0,1000],ach:[0,5],
+ deposition:[0,3],deltaP:[0,100],windDirection:[0,360],windSpeed:[0,20],
+ gustPercent:[0,90],gustPeriod:[30,3600],gridStep:[.12,.35],
+ pmPenetration:[0,1],maxWindowAch:[0,30],cadr:[0,1800],
+ purifierDiameter:[.2,1.2],jet:[0,2],orientation:[0,360],maxMinutes:[1,525600]
+};
+const BOOLEAN_PARAMETERS=new Set(['windFlowEnabled','timeLimitEnabled']);
+const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+function importNumeric(record,key,fallback,min,max){
+ const value=record[key];
+ if(value===undefined)return fallback; // compatibility with older exports
+ if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)
+  throw Error(`Niepoprawna wartość ${key}: oczekiwano liczby w zakresie ${min}–${max}.`);
+ return value;
+}
+function parseImportDocument(doc){
+ if(!isRecord(doc))throw Error('Plik JSON musi zawierać obiekt konfiguracji.');
+ if(!Array.isArray(doc.rooms)||doc.rooms.length>14)throw Error('Niepoprawna lista pokojów (maksymalnie 14).');
+ const params={...DEFAULTS};
+ if(doc.parameters!==undefined){
+  if(!isRecord(doc.parameters))throw Error('Niepoprawne parametry symulacji.');
+  for(const [key,value] of Object.entries(doc.parameters)){
+   if(!Object.prototype.hasOwnProperty.call(DEFAULTS,key))continue; // newer format
+   if(BOOLEAN_PARAMETERS.has(key)){
+    if(typeof value!=='boolean')throw Error('Niepoprawny parametr logiczny: '+key);
+   }else{
+    const [lo,hi]=INPUT_LIMITS[key];
+    if(typeof value!=='number'||!Number.isFinite(value)||value<lo||value>hi)
+     throw Error(`Parametr ${key} musi mieścić się w zakresie ${lo}–${hi}.`);
+   }
+   params[key]=value;
+  }
+ }
+ const rr=doc.rooms.map((r,i)=>{
+  if(!isRecord(r))throw Error('Niepoprawny pokój numer '+(i+1));
+  const w=importNumeric(r,'w',3,.5,MAX_SPAN),h=importNumeric(r,'h',3,.5,MAX_SPAN);
+  return {
+   id:r.id===undefined?uid():String(r.id),name:String(r.name??'Pokój').slice(0,36),
+   x:importNumeric(r,'x',0,0,MAX_SPAN),y:importNumeric(r,'y',0,0,MAX_SPAN),w,h,
+   emission:importNumeric(r,'emission',0,0,100000),extraAch:importNumeric(r,'extraAch',0,0,5),
+   supplyM3h:importNumeric(r,'supplyM3h',0,0,600),exhaustM3h:importNumeric(r,'exhaustM3h',0,0,600),
+   supplyX:importNumeric(r,'supplyX',.3,0,MAX_SPAN),supplyY:importNumeric(r,'supplyY',.3,0,MAX_SPAN),
+   exhaustX:importNumeric(r,'exhaustX',Math.max(.3,w-.3),0,MAX_SPAN),
+   exhaustY:importNumeric(r,'exhaustY',Math.max(.3,h-.3),0,MAX_SPAN)
+  };
+ });
+ if(rr.some(r=>!r.id))throw Error('Identyfikator pokoju nie może być pusty.');
+ validateRooms(rr);
+ const roomIds=new Set(rr.map(r=>r.id));
+ const rawDoors=doc.doors??[],rawWindows=doc.windows??[],rawVents=doc.vents??[];
+ if(!Array.isArray(rawDoors)||rawDoors.length>100)throw Error('Niepoprawna lista przejść.');
+ if(!Array.isArray(rawWindows)||rawWindows.length>100)throw Error('Niepoprawna lista okien.');
+ if(!Array.isArray(rawVents)||rawVents.length>80)throw Error('Niepoprawna lista kratek (maksymalnie 80).');
+ const dd=rawDoors.map((d,i)=>{
+  if(!isRecord(d)||!roomIds.has(String(d.a))||!roomIds.has(String(d.b)))
+   throw Error('Przejście '+(i+1)+' odwołuje się do nieistniejącego pokoju.');
+  if(d.open!==undefined&&typeof d.open!=='boolean')throw Error('Niepoprawny stan drzwi.');
+  if(d.kind!==undefined&&!['door','opening'].includes(d.kind))throw Error('Niepoprawny typ przejścia.');
+  return {id:uid(),a:String(d.a),b:String(d.b),width:importNumeric(d,'width',1,.3,8),
+   pos:importNumeric(d,'pos',.5,0,1),open:d.kind==='opening'||d.open!==false,
+   kind:d.kind==='opening'?'opening':'door',
+   gapMm:importNumeric(d,'gapMm',DEFAULT_DOOR_GAP_MM,0,35),
+   frameLeakCm2:importNumeric(d,'frameLeakCm2',DEFAULT_DOOR_FRAME_CM2,0,200)};
+ });
+ for(const d of dd){
+  const a=rr.find(r=>r.id===d.a),b=rr.find(r=>r.id===d.b),edge=shared(a,b);
+  if(!edge)throw Error('Przejście nie łączy sąsiadujących pokojów.');
+  if(d.width>edge.to-edge.from+.01)throw Error('Przejście jest szersze niż wspólna ściana.');
+  if(passageOverlap(d,d.pos,rr,dd))throw Error('Przejścia nakładają się na wspólnej ścianie.');
+ }
+ const ww=rawWindows.map((w,i)=>{
+  if(!isRecord(w)||!roomIds.has(String(w.roomId)))
+   throw Error('Okno '+(i+1)+' odwołuje się do nieistniejącego pokoju.');
+  if(w.side!==undefined&&!['left','right','top','bottom'].includes(w.side))throw Error('Niepoprawna ściana okna.');
+  if(w.state!==undefined&&!['closed','tilt','open'].includes(w.state))throw Error('Niepoprawny stan okna.');
+  return {id:uid(),roomId:String(w.roomId),side:w.side??'top',pos:importNumeric(w,'pos',.5,0,1),
+   width:importNumeric(w,'width',1.2,.3,5),height:importNumeric(w,'height',1.35,.3,3),
+   state:w.state??'closed',q100:importNumeric(w,'q100',3,0,100),
+   gapMm:importNumeric(w,'gapMm',5,0,50),openPercent:importNumeric(w,'openPercent',10,0,100)};
+ });
+ for(const w of ww)if(!validWindow(w,rr,ww))
+  throw Error('Nieprawidłowa geometria albo nakładające się okna.');
+ const vv=rawVents.map((v,i)=>{
+  if(!isRecord(v)||!roomIds.has(String(v.roomId)))
+   throw Error('Kratka '+(i+1)+' odwołuje się do nieistniejącego pokoju.');
+  if(!['supply','exhaust'].includes(v.type))throw Error('Niepoprawny typ kratki.');
+  const r=rr.find(r=>r.id===String(v.roomId));
+  return {id:uid(),roomId:r.id,type:v.type,rate:importNumeric(v,'rate',0,0,600),
+   x:cm(clamp(importNumeric(v,'x',r.w*.5,0,MAX_SPAN),.05,Math.max(.05,r.w-.05))),
+   y:cm(clamp(importNumeric(v,'y',r.h*.5,0,MAX_SPAN),.05,Math.max(.05,r.h-.05)))};
+ });
+ if(rr.length&&!rr.some(r=>r.w>=params.purifierDiameter&&r.h>=params.purifierDiameter))
+  throw Error('Żaden pokój nie mieści oczyszczacza o zadanej średnicy.');
+ const p=isRecord(doc.purifier)?doc.purifier:{};
+ const position={x:importNumeric(p,'x',1,0,MAX_SPAN),y:importNumeric(p,'y',1,0,MAX_SPAN)};
+ if(doc.outsideManual!==undefined&&typeof doc.outsideManual!=='boolean')
+  throw Error('Niepoprawna informacja o odczycie zewnętrznym.');
+ return {rooms:rr,doors:dd,windows:ww,vents:vv,purifier:position,
+  parameters:params,outsideManual:doc.outsideManual===true};
+}
+function restoreImportSnapshot(saved){
+ ({rooms,doors,windows,vents,purifier,userParameters,outsideManual,selectedRoomId,grid,
+  concentration,buffer,velocity,intake,elapsed,removed,clippedMass,playing,lastGustUpdate,weatherDiagnostics,rankingResults}=saved);
+ syncFields();renderEditors();
+ if(rankingResults)drawRanking();else $('ranking').innerHTML='';
+ $('compareStatus').textContent=saved.compareStatus;
+ updateMetrics();render(performance.now());
+ $('play').disabled=!grid;$('compare').disabled=!grid;
+ $('play').textContent=playing?'❚❚ Pauza':'▶ Start';
+}
+function applyImportedDocument(doc){
+ // Validate every field before touching the currently running simulation.
+ const prepared=parseImportDocument(doc);
+ const saved={rooms,doors,windows,vents,purifier,userParameters,outsideManual,selectedRoomId,grid,
+  concentration,buffer,velocity,intake,elapsed,removed,clippedMass,playing,lastGustUpdate,weatherDiagnostics,
+  rankingResults,compareStatus:$('compareStatus').textContent};
+ try{
+  rooms=prepared.rooms;doors=prepared.doors;windows=prepared.windows;vents=prepared.vents;
+  purifier=prepared.purifier;userParameters=prepared.parameters;outsideManual=prepared.outsideManual;
+  selectedRoomId=null;syncFields();renderEditors();rebuild();
+  if(rooms.length&&!grid)throw Error('Wczytana konfiguracja nie tworzy poprawnego modelu siatki i przepływu.');
+ }catch(error){
+  restoreImportSnapshot(saved);throw error;
+ }
+}
+$('saveJson').addEventListener('click',()=>{
+ getInputs();const data={version:7,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};
+ download('aeroplan-mieszkanie.json',new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}));
+});
+$('loadJson').addEventListener('click',()=>$('jsonFile').click());
+$('jsonFile').addEventListener('change',async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  if(file.size>5*1024*1024)throw Error('Plik jest zbyt duży (limit 5 MB).');
+  applyImportedDocument(JSON.parse(await file.text()));
+  setStatus('Zaimportowano konfigurację.');
+ }catch(error){setStatus('Nie udało się zaimportować JSON: '+error.message,true);}
+ e.target.value='';
+});
  preset();requestAnimationFrame(tick);
 })();
 

@@ -16,6 +16,9 @@ window.__test = {
  get grid(){return grid;},get concentration(){return concentration;},get velocity(){return velocity;},get elapsed(){return elapsed;},
  get parameters(){return userParameters;},
  windowGeometry,validWindow,validateRooms,buildGrid,passageFraction,passageGeometry,passageOverlap,doorLeakArea,doorFlowAtPa,placePurifier,ventPosition,makeVent,addVentAt,renderVents,reconfigureConnections,configureWindowAirflow,stepPM,solveFlow,buildIntake,initConcentration,windowQ,roomAverages,roomPercentiles,rebuild,
+ parseImportDocument,applyImportedDocument,
+ makeFakeRanking:(items)=>{rankingResults=items;drawRanking();},
+ get rankingResults(){return rankingResults;},
  importModel:(rr,dd=[],ww=[])=>{
   rooms=rr;doors=dd;windows=ww;vents=[];
   purifier={x:(rr[0]?.x||0)+(rr[0]?.w||3)/2,y:(rr[0]?.y||0)+(rr[0]?.h||3)/2};
