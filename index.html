@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AeroPlan 2.8 – przepływ powietrza i ciśnienie</title>
+<title>AeroPlan 2.10 – przepływ powietrza i ciśnienie</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,14 +14,14 @@
  <div class="section">
   <h2>1. Model mieszkania <small>metry / m²</small></h2>
   <div class="rowbtn"><button id="preset">Przykład · 55 m²</button><button id="newplan">Pusty plan</button></div>
-  <div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" type="number" min="2" max="6" step="0.1" value="2.6"></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" type="number" min="0.002" max="0.15" step="0.005" value="0.035"></div></div>
+  <div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" type="number" min="2" max="6" step="0.1" value="2.6"></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" type="number" min="0.002" max="0.15" step="0.005" value="0.025"></div></div>
   <p class="hint">Pomieszczenia możesz narysować myszką na planie (narzędzie „Rysuj pokój”) albo ustawić ich wymiary i współrzędne poniżej. Pokoje nie mogą się nakładać.</p>
   <div id="rooms"></div><button id="addRoom" class="smallbtn">+ Dodaj pomieszczenie</button>
  </div>
  <div class="section">
   <h2>2. Drzwi i stałe otwory <small>przejścia między pokojami</small></h2>
   <div id="doors"></div><div class="rowbtn"><button id="addDoor" class="smallbtn">+ Dodaj drzwi</button><button id="addOpening" class="smallbtn">+ Stały otwór</button></div>
-  <p class="hint">Drzwi można przełączać podczas symulacji. Aby je przesunąć wzdłuż wspólnej ściany, użyj narzędzia „Przesuń element” i przeciągnij drzwi; możesz też edytować „Pozycja [%]”. Stały otwór nie ma skrzydła.</p>
+  <p class="hint">Zamknięte drzwi również przepuszczają powietrze przez regulowaną szczelinę pod skrzydłem i nieszczelność przy ościeżnicy. Wartość 10 mm jest przykładowa. Drzwi można przełączać podczas symulacji. Aby je przesunąć wzdłuż wspólnej ściany, użyj narzędzia „Przesuń element” i przeciągnij drzwi; możesz też edytować „Pozycja [%]”. Stały otwór nie ma skrzydła.</p>
  </div>
  <div class="section">
   <h2>3. Okna <small>tylko ściany zewnętrzne</small></h2>
@@ -40,7 +40,7 @@
   <div class="fieldgrid">
    <div class="field"><label for="initial">Początkowe PM₂.₅ [µg/m³]</label><input id="initial" type="number" min="0" max="1000" step="1" value="48"></div>
    <div class="field"><label for="outside">PM₂.₅ ZA OKNEM [µg/m³] · wpisz swój pomiar</label><input id="outside" type="number" min="0" max="1000" step="0.1" value="24" aria-describedby="outsideHint"></div>
-   <div class="field"><label for="ach">Pozostała wentylacja (poza oknami) [1/h]</label><input id="ach" type="number" min="0" max="5" step="0.05" value="0.1"></div>
+   <div class="field"><label for="ach">Referencyjna nieszczelność obudowy (przy 4 Pa) [1/h]</label><input id="ach" type="number" min="0" max="5" step="0.05" value="0.1"></div>
    <div class="field"><label for="deposition">Osadzanie cząstek [1/h]</label><input id="deposition" type="number" min="0" max="3" step="0.05" value="0.08"></div>
   </div>
   <div class="fieldgrid spaced">
@@ -52,14 +52,14 @@
     <div class="field"><label for="gustPeriod">Okres zmienności podmuchów [s symulacji]</label><input id="gustPeriod" type="number" min="30" max="3600" step="30" value="180"></div>
     <div class="field"><label for="gridStep">Rozmiar komórki PM₂.₅ [m]</label><select id="gridStep"><option value="0.3">0,30 — szybciej</option><option value="0.2" selected>0,20 — standard</option><option value="0.15">0,15 — szczegółowo</option></select></div>
     <div class="field"><label for="pmPenetration">Przenikanie PM przez zamknięte okno [0–1]</label><input id="pmPenetration" type="number" min="0" max="1" step="0.05" value="0.8"></div>
-    <div class="field"><label for="maxWindowAch">Limit wymiany na otwarte okno [1/h pokoju]</label><input id="maxWindowAch" type="number" min="0" max="30" step="0.5" value="8"></div>
+    <div class="field"><label for="maxWindowAch">Limit wymiany na otwarte okno [1/h pokoju]</label><input id="maxWindowAch" type="number" min="0" max="30" step="0.5" value="12"></div>
   </div>
   <p class="hint" id="outsideHint"><strong>24 µg/m³ to wyłącznie przykład, nie aktualny pomiar.</strong> Podaj rzeczywiste stężenie z czujnika PM₂.₅ lub lokalnego monitoringu. Wartość za oknem zostaje użyta przy napływie przez okna i pozostałej wentylacji — nie jest losowana.</p>
   <p class="hint">Nawiew i wywiew [m³/h] dodasz jako osobne kratki w sekcji 4 lub klikając na rzucie. Solver rozwiązuje bilans przepływów przez okna, drzwi, nawiewy i wywiewy, a nieszczelności obudowy są traktowane jako opory zależne od ciśnienia. Parametry wiatru i otwarcia pozostają przybliżeniami. Rozmiar komórki jest ograniczany automatycznie dla bardzo dużych planów.</p>
-  <p class="hint">Wentylacja ogólna obejmuje pozostałe nieszczelności — <strong>nie licz w niej ponownie okien</strong>. Przy włączonym szacowanym przepływie okiennym model bilansuje nawiew i wywiew w połączonych pokojach zgodnie z umownym kierunkiem wiatru. Reszta wymiany pozostaje lokalna. To model scenariuszowy bez pomiaru rzeczywistego ciśnienia ani wiatru.</p>
+  <p class="hint">Współczynnik ACH służy tutaj wyłącznie jako miara przepuszczalności nieszczelności przy 4 Pa, a nie gwarantowana wymiana powietrza. Wentylacja ogólna obejmuje pozostałe nieszczelności — <strong>nie licz w niej ponownie okien</strong>. Przy włączonym szacowanym przepływie okiennym model bilansuje nawiew i wywiew w połączonych pokojach zgodnie z umownym kierunkiem wiatru. Dwustronne mieszanie pozostaje jedynie przy oknach bez przepływu netto; jest przybliżeniem. To model scenariuszowy bez pomiaru rzeczywistego ciśnienia ani wiatru.</p>
  </div>
  <div class="section">
-  <h2>5. Oczyszczacz</h2>
+  <h2>6. Oczyszczacz</h2>
   <div class="fieldgrid">
    <div class="field"><label for="cadr">CADR dla PM₂.₅ [m³/h]</label><input id="cadr" type="number" min="0" max="1800" step="10" value="330"></div>
    <div class="field"><label for="purifierDiameter">Średnica oczyszczacza na planie [m]</label><input id="purifierDiameter" type="number" min="0.20" max="1.20" step="0.01" value="0.42"></div>
@@ -74,7 +74,7 @@
   <p class="hint">Kliknij na planie, by przenieść oczyszczacz. Możesz też go przeciągnąć. <strong>Cały okrąg urządzenia</strong> pozostanie w obrębie jednego pokoju, z uwzględnieniem zadanej średnicy. CADR decyduje o usuwaniu pyłu, a wydmuch o modelowanym ruchu powietrza.</p>
  </div>
  <div class="section">
-  <h2>6. Zapis i odczyt</h2>
+  <h2>7. Zapis i odczyt</h2>
   <div class="rowbtn"><button id="saveJson" class="smallbtn">Eksportuj JSON</button><button id="loadJson" class="smallbtn">Importuj JSON</button></div>
   <input style="display:none" type="file" id="jsonFile" accept="application/json,.json">
   <p class="hint">Zapis konfiguracji (pokoje, drzwi, stałe otwory, okna, kratki, stężenia, parametry oczyszczacza) do lokalnego pliku. Nie wysyła danych do sieci.</p>
@@ -87,7 +87,8 @@
   <div class="metric"><div class="k">Powierzchnia / kubatura</div><div class="v" id="areaMetric">—</div><div class="s" id="volumeMetric">—</div></div>
   <div class="metric"><div class="k">Średnie PM₂.₅</div><div class="v" id="pmMetric">—</div><div class="s">µg/m³ · średnia objętościowa</div></div>
   <div class="metric"><div class="k">Teoretyczne eACH</div><div class="v" id="eachMetric">—</div><div class="s">CADR / cała kubatura [1/h]</div></div>
-   <div class="metric"><div class="k">Usunięty pył przez filtr</div><div class="v" id="removedMetric">—</div><div class="s">mg · od rozpoczęcia</div></div><div class="metric"><div class="k">Nawiew netto (okna + kratki)</div><div class="v" id="windowFlowMetric">—</div><div class="s">m³/h · wynik bilansu</div></div>
+   <div class="metric"><div class="k">Usunięty pył przez filtr</div><div class="v" id="removedMetric">—</div><div class="s">mg · od rozpoczęcia</div></div><div class="metric"><div class="k">Napływ brutto (okna + nieszczelności + kratki)</div><div class="v" id="windowFlowMetric">—</div><div class="s">m³/h · suma dodatnich strumieni</div></div>
+ <div class="metric"><div class="k">Korekta ujemnych PM (numeryka)</div><div class="v" id="clippedMetric">—</div><div class="s">mg · idealnie 0</div></div>
  <div class="metric"><div class="k">Odchyłka bilansu ciśnień</div><div class="v" id="pressureMetric">—</div><div class="s">m³/h · im bliżej 0, tym lepiej</div></div>
   <div class="metric"><div class="k">Prędkość wiatru scenariusza</div><div class="v" id="windActualMetric">—</div><div class="s">m/s · chwilowy podmuch</div></div>
  </section>
@@ -116,7 +117,7 @@
   </div>
   <div class="selection-info" id="selectionInfo" aria-live="polite">Nie zaznaczono pokoju</div>
   <div class="editorhelp" id="editorHelp">Oczyszczacz: kliknij lub przeciągnij w pomieszczeniu. Kliknięcie drzwi zmienia ich stan. Aby narysować dom, wybierz „Pusty plan”.</div>
-  <div class="simhelp">Podczas symulacji: <strong>kliknij drzwi, aby je otworzyć / zamknąć</strong>. Otwór bez skrzydła jest stale otwarty. Kliknięcie okna przełącza: zamknięte → rozszczelnione → otwarte.</div>
+  <div class="simhelp">Podczas symulacji: <strong>kliknij drzwi, aby je otworzyć / zamknąć (zamknięte nie są idealnie szczelne)</strong>. Otwór bez skrzydła jest stale otwarty. Kliknięcie okna przełącza: zamknięte → rozszczelnione → otwarte.</div>
   <div class="canvaswrap"><canvas id="field" width="1050" height="650" aria-label="Edytor i mapa mieszkania, przeciągaj myszką aby rysować i przesuwać pokoje" tabindex="0"></canvas></div>
   <div class="local-probe" id="localProbe">Najedź myszką na pokój, aby odczytać lokalne PM₂.₅ (bez uśredniania).</div>
   <div class="legend"><span id="legendMin">0 µg/m³</span><div class="gradient" id="legendGradient"></div><span id="legendMax">50 µg/m³</span><span style="margin-left:auto">Skala poglądowa · widok z góry</span></div>
@@ -126,7 +127,7 @@
   <section class="datacard"><h3>Stężenia w pomieszczeniach</h3><p>Aktualne średnie PM₂.₅ w µg/m³ — te same wartości wyświetlają się na planie przy nazwach pomieszczeń.</p><table class="roomsdata"><thead><tr><th>Pomieszczenie</th><th>m²</th><th>Średnie PM₂.₅</th><th>P90</th></tr></thead><tbody id="roomStats"></tbody></table></section>
   <section class="datacard"><h3>Porównanie lokalizacji oczyszczacza</h3><p>Porównaj 30-minutową ekspozycję przy ostatnich obliczonych warunkach wiatru. Podmuchy są w rankingu zamrożone; porównuj także przy różnych ustawieniach wiatru.</p><div class="field" style="margin:10px 0 11px"><label for="targetRoom">Co optymalizować?</label><select id="targetRoom"><option value="all">Średnie stężenie w całym mieszkaniu</option></select></div><button id="compare" class="primary">Porównaj lokalizacje</button><div id="compareStatus" class="comparison-meta">Wyniki zależą od aktualnego układu ścian, emisji i CADR.</div><div class="progress"><div id="compareProgress"></div></div><div id="ranking"></div></section>
  </div>
- <section class="datacard" style="margin-top:16px"><details><summary>Model 2.8 — fizyka i ograniczenia</summary>
+ <section class="datacard" style="margin-top:16px"><details><summary>Model 2.9 — fizyka i ograniczenia</summary>
  <p><strong>Ciśnienia:</strong> każde pomieszczenie jest węzłem sieci ciśnień. Połączenia opisują równania nieszczelności Q ∼ (Δp)^0,65 i otworów Q = C<sub>d</sub> A√(2|Δp|/ρ). Solver szuka ciśnień, przy których dopływ i odpływ każdego pokoju się równoważą. Wiatr nadaje różne ciśnienia fasadom.</p>
  <p><strong>Przepływ przestrzenny:</strong> uproszczony solwer 2D na siatce z projekcją ciśnienia rozprowadza źródła i ujścia w pokojach. Porywy wiatru przeliczane okresowo. Kratki nawiewu/wywiewu są modelowane w środku pokoju, bez geometrii kanałów.</p>
  <p><strong>PM₂.₅:</strong> zachowawczy transport między sąsiednimi komórkami z dyfuzją, lokalnymi źródłami, filtracją i napływem z zewnątrz. P90 oznacza stężenie w 90. percentylu komórek pokoju — jest pomocniczym wskaźnikiem hot-spotów, a nie pomiarem.</p>

@@ -4,10 +4,22 @@ const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)
 const uid=()=>Math.random().toString(36).slice(2,10); // identyfikatory UI, nie wpływają na model
 const canvas=$('field'),ctx=canvas.getContext('2d',{alpha:false});
 const DEFAULTS={height:2.6,mixing:.025,initial:48,outside:24,ach:.1,deposition:.08,deltaP:4,windFlowEnabled:true,windDirection:0,windSpeed:2.5,gustPercent:15,gustPeriod:180,gridStep:.20,pmPenetration:.8,maxWindowAch:12,cadr:330,purifierDiameter:.42,jet:.8,orientation:0,maxMinutes:60,timeLimitEnabled:false};
-let rooms=[],doors=[],windows=[],vents=[],purifier={x:3.1,y:2.1},grid=null,concentration=null,buffer=null,velocity=null,intake=null,elapsed=0,removed=0,playing=false,view='pm',viewTransform=null,dragging=false,benchmarkToken=0,rankingResults=null,lastRender=0, lastFrame=performance.now();
+let rooms=[],doors=[],windows=[],vents=[],purifier={x:3.1,y:2.1},grid=null,concentration=null,buffer=null,velocity=null,intake=null,elapsed=0,removed=0,clippedMass=0,playing=false,view='pm',viewTransform=null,dragging=false,benchmarkToken=0,rankingResults=null,lastRender=0, lastFrame=performance.now();
 let userParameters={...DEFAULTS},outsideManual=false,lastGustUpdate=-Infinity,weatherDiagnostics=null;
 let editorMode='purifier',editorGesture=null,editorHover=null,selectedRoomId=null,pendingDeleteId=null;
 const SNAP=.5, MAX_SPAN=35, MAGNET_DISTANCE=.22, cm=n=>Math.round(n*100)/100;
+// Indicative inter-room door undercut: 10 mm at 0.8 m ≈ 80 cm².
+// Frame leakage is an additional *equivalent* opening area, not a measured value.
+const DEFAULT_DOOR_GAP_MM=10, DEFAULT_DOOR_FRAME_CM2=4;
+function doorGapMm(d){return clamp(Number.isFinite(Number(d.gapMm))&&d.gapMm!==null?Number(d.gapMm):DEFAULT_DOOR_GAP_MM,0,35);}
+function doorFrameCm2(d){return clamp(Number.isFinite(Number(d.frameLeakCm2))&&d.frameLeakCm2!==null?Number(d.frameLeakCm2):DEFAULT_DOOR_FRAME_CM2,0,200);}
+function doorLeakArea(d){
+ if(isOpening(d)||d.open)return 0;
+ const geo=passageGeometry(d);if(!geo)return 0;
+ return (geo.to-geo.from)*doorGapMm(d)/1000+doorFrameCm2(d)/10000;
+}
+function doorFlowAtPa(d,deltaPa=2){const area=doorLeakArea(d);return .60*area*Math.sqrt(2*Math.max(0,deltaPa)/1.204)*3600;}
+
 const snap=x=>Math.round(x/SNAP)*SNAP;
 const useGrid=()=>$('snapToGrid').checked, useMagnet=()=>$('magnetWalls').checked;
 const limitPoint=p=>({x:cm(clamp(p.x,0,MAX_SPAN)),y:cm(clamp(p.y,0,MAX_SPAN))});
@@ -78,7 +90,7 @@ function validateRooms(list){
  }
  for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)if(rectanglesOverlap(list[i],list[j]))throw Error('Pokoje „'+list[i].name+'” i „'+list[j].name+'” nakładają się na siebie.');
 }
-function candidateValid(r,ignoreId){return r.x>=0&&r.y>=0&&r.x+r.w<=35&&r.y+r.h<=35&&r.w>=.5&&r.h>=.5&&!roomOverlap(r,ignoreId);}
+function candidateValid(r,ignoreId){return r.x>=0&&r.y>=0&&r.x+r.w<=MAX_SPAN&&r.y+r.h<=MAX_SPAN&&r.w>=.5&&r.h>=.5&&!roomOverlap(r,ignoreId);}
 function rectDrag(a,b){return {x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)};}
 function nearestSharedEdge(p){let best=null,dist=Infinity;for(let i=0;i<rooms.length;i++)for(let j=i+1;j<rooms.length;j++){
  const a=rooms[i],b=rooms[j],e=shared(a,b);if(!e)continue;
@@ -97,7 +109,7 @@ function passageOverlap(d,pos=d.pos){const a=rooms.find(r=>r.id===d.a),b=rooms.f
 function createDoorAt(p,kind='door'){const hit=nearestSharedEdge(p);if(!hit){setStatus('Kliknij dokładnie we wspólną ścianę dwóch sąsiadujących pomieszczeń (do 45 cm od niej).',true);return;}
  const {a,b,e,along}=hit,span=e.to-e.from,width=Math.min(1,Math.max(.3,span-.05));
  const pos=clamp((along-e.from)/span,width/(2*span),1-width/(2*span));
- const proposed={id:uid(),a:a.id,b:b.id,width,pos,open:true,kind};if(passageOverlap(proposed)){setStatus('W tym miejscu jest już przejście. Przesuń istniejące lub wskaż inny fragment ściany.',true);return;}doors.push(proposed);renderDoors();reconfigureConnections();setStatus((kind==='opening'?'Dodano stały otwór':'Dodano drzwi')+' między „'+a.name+'” i „'+b.name+'”.');}
+ const proposed={id:uid(),a:a.id,b:b.id,width,pos,open:true,kind,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2};if(passageOverlap(proposed)){setStatus('W tym miejscu jest już przejście. Przesuń istniejące lub wskaż inny fragment ściany.',true);return;}doors.push(proposed);renderDoors();reconfigureConnections();setStatus((kind==='opening'?'Dodano stały otwór':'Dodano drzwi')+' między „'+a.name+'” i „'+b.name+'”.');}
 
 const isOpening=d=>d.kind==='opening';
 function ventPosition(v){const r=rooms.find(r=>r.id===v.roomId);return r?{x:r.x+v.x,y:r.y+v.y,room:r}:null;}
@@ -153,7 +165,7 @@ function drawVents(X,Y,scale){for(const v of vents){const q=ventPosition(v);if(!
 
 const num=(v,fallback,min,max)=>clamp(Number.isFinite(+v)?+v:fallback,min,max);
 const room=(name,x,y,w,h,emission)=>({id:uid(),name,x,y,w,h,emission,extraAch:0,supplyM3h:0,exhaustM3h:0,supplyX:Math.min(.3,w/3),supplyY:Math.min(.3,h/3),exhaustX:Math.max(.3,w-.3),exhaustY:Math.max(.3,h-.3)});
-function preset(){selectedRoomId=null;const a=room('Salon',0,0,4.5,4,250),b=room('Sypialnia',0,4,4.5,2.4,80),c=room('Korytarz',4.5,0,1.8,6.4,0),d=room('Kuchnia',6.3,0,3,2.6,1350),e=room('Pokój dziecka',6.3,2.6,3,2.4,100);rooms=[a,b,c,d,e];doors=[{id:uid(),a:a.id,b:c.id,width:2.5,pos:.52,open:true},{id:uid(),a:b.id,b:c.id,width:1.5,pos:.5,open:true},{id:uid(),a:d.id,b:c.id,width:1.7,pos:.5,open:true},{id:uid(),a:e.id,b:c.id,width:1.6,pos:.52,open:true}];windows=[makeWindow(a,'left',.48,1.4),makeWindow(b,'left',.5,1.2),makeWindow(d,'top',.5,1.1),makeWindow(e,'right',.5,1.2)];vents=[makeVent(d,'exhaust',2.58,.45,30)];purifier={x:2.3,y:2};const measuredOutside=outsideManual?userParameters.outside:null;userParameters={...DEFAULTS};if(measuredOutside!==null)userParameters.outside=measuredOutside;syncFields();renderEditors();rebuild();}
+function preset(){selectedRoomId=null;const a=room('Salon',0,0,4.5,4,250),b=room('Sypialnia',0,4,4.5,2.4,80),c=room('Korytarz',4.5,0,1.8,6.4,0),d=room('Kuchnia',6.3,0,3,2.6,1350),e=room('Pokój dziecka',6.3,2.6,3,2.4,100);rooms=[a,b,c,d,e];doors=[{id:uid(),a:a.id,b:c.id,width:2.5,pos:.52,open:true,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2},{id:uid(),a:b.id,b:c.id,width:1.5,pos:.5,open:true,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2},{id:uid(),a:d.id,b:c.id,width:1.7,pos:.5,open:true,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2},{id:uid(),a:e.id,b:c.id,width:1.6,pos:.52,open:true,gapMm:DEFAULT_DOOR_GAP_MM,frameLeakCm2:DEFAULT_DOOR_FRAME_CM2}];windows=[makeWindow(a,'left',.48,1.4),makeWindow(b,'left',.5,1.2),makeWindow(d,'top',.5,1.1),makeWindow(e,'right',.5,1.2)];vents=[makeVent(d,'exhaust',2.58,.45,30)];purifier={x:2.3,y:2};const measuredOutside=outsideManual?userParameters.outside:null;userParameters={...DEFAULTS};if(measuredOutside!==null)userParameters.outside=measuredOutside;syncFields();renderEditors();rebuild();}
 function emptyPlan(){if(rooms.length&& !confirm('Wyczyścić obecny plan? Przed zmianą możesz zapisać go do JSON.'))return;selectedRoomId=null;rooms=[];doors=[];windows=[];vents=[];purifier={x:2.5,y:2};renderEditors();setTool('room');rebuild();} 
 function getInputs(){const o={};for(const k of Object.keys(DEFAULTS)){
  const e=$(k);
@@ -280,7 +292,7 @@ function createWindowAt(p){
 function windowQ(w,p){if(!validWindow(w))return 0;const g=windowGeometry(w),actualWidth=g.to-g.from,area=Math.max(.05,actualWidth*w.height),dp=Math.max(0,p.deltaP);
  if(w.state==='closed')return Math.max(0,w.q100)*area*Math.pow(dp/100,.67);
  const effectiveArea=w.state==='tilt'?actualWidth*Math.max(0,w.gapMm)/1000:actualWidth*w.height*Math.max(0,w.openPercent)/100;
- const orifice=.60*effectiveArea*Math.sqrt(2*dp/1.2)*3600;
+ const orifice=.60*effectiveArea*Math.sqrt(2*dp/1.204)*3600;
  const roomVolume=g.r.w*g.r.h*p.height;
  return Math.min(orifice,Math.max(0,p.maxWindowAch)*roomVolume);
 }
@@ -289,7 +301,7 @@ function mapWindowSources(g,p){const sources=[];for(const w of windows){if(!vali
  if(Math.abs(perp-geo.at)<g.step*.88&&along>=geo.from-g.step*.3&&along<=geo.to+g.step*.3)cells.push(k);
  }
  if(!cells.length){let best=-1,d=Infinity;for(let k=0;k<g.n;k++){if(g.ids[k]!==ri)continue;const i=k%g.nx,j=(k/g.nx)|0,x=(i+.5)*g.step,y=(j+.5)*g.step,delta=Math.hypot((geo.vertical?x:y)-geo.at,(geo.vertical?y:x)-geo.center);if(delta<d){d=delta;best=k;}}if(best>=0)cells.push(best);}
- const q=windowQ(w,p);if(cells.length&&q>0)sources.push({id:w.id,side:w.side,cells,q,penetration:w.state==='closed'?p.pmPenetration:1});
+ const q=windowQ(w,p);if(cells.length)sources.push({id:w.id,side:w.side,cells,q,penetration:w.state==='closed'?p.pmPenetration:1});
  }return sources;
 }
 // Room-pressure network: conservation of mass across windows, doors and individual ventilation grilles.
@@ -301,7 +313,12 @@ function configureWindowAirflow(g,p,simTime=0){
   const area=(geo.to-geo.from)*original.height,openArea=original.state==='closed'?0:original.state==='tilt'?(geo.to-geo.from)*original.gapMm/1000:area*original.openPercent/100;
   return {id:w.id,roomIndex:roomIndex.get(original.roomId),state:original.state,area,openArea,q100:original.q100,side:original.side,
    maxQ:p.maxWindowAch*geo.r.w*geo.r.h*p.height,penetration:w.penetration};}).filter(Boolean);
- const doorLinks=doors.filter(d=>d.open||isOpening(d)).map(d=>{const geo=passageGeometry(d);return geo?{id:d.id,a:roomIndex.get(d.a),b:roomIndex.get(d.b),area:(geo.to-geo.from)*Math.min(p.height,2.05)}:null;}).filter(Boolean);
+ // Closed doors remain connected via their undercut and frame gaps.
+ // A zero-area custom door is allowed to be airtight; the normal default is not.
+ const doorLinks=doors.map(d=>{const geo=passageGeometry(d);if(!geo)return null;
+  const area=(isOpening(d)||d.open)?(geo.to-geo.from)*Math.min(p.height,2.05):doorLeakArea(d);
+  return area>0?{id:d.id,a:roomIndex.get(d.a),b:roomIndex.get(d.b),area}:null;
+ }).filter(Boolean);
  const ventLinks=vents.filter(v=>v.rate>0&&roomIndex.has(v.roomId)).map(v=>({id:v.id,roomIndex:roomIndex.get(v.roomId),rate:v.rate,type:v.type}));
  const result=window.AeroPressure.solve({rooms,windows:pressureWindows,doors:doorLinks,vents:ventLinks,
   windSpeed:p.windFlowEnabled?gust:0,windDirection:p.windDirection,backgroundAch:p.ach,height:p.height,pmPenetration:p.pmPenetration});
@@ -311,6 +328,7 @@ function configureWindowAirflow(g,p,simTime=0){
   for(const key of Object.keys(result.windowFlows))result.windowFlows[key]=0;
   for(const key of Object.keys(result.leakFlows))result.leakFlows[key]=0;
   for(const key of Object.keys(result.ventFlows))result.ventFlows[key]=0;
+  for(const key of Object.keys(result.doorFlows))result.doorFlows[key]=0;
   result.totalSupply=0;result.totalExhaust=0;
  }
  const net=new Float64Array(g.n),airSources=[];
@@ -323,7 +341,8 @@ function configureWindowAirflow(g,p,simTime=0){
   w.netQ=result.windowFlows[w.id]||0;
   // Wind-induced through-flow uses signed flux; unresolved single-sided mixing remains explicitly approximate.
   const original=windows.find(a=>a.id===w.id);
-  w.localQ=(original?.state==='closed'?.25:.12)*Math.max(0,w.q);
+  // Dwustronna wymiana przy zerowym przepływie netto; nie naliczamy jej drugi raz przy przeciągu.
+  w.localQ=Math.abs(w.netQ)<1e-4?(original?.state==='closed'?.25:.12)*Math.max(0,w.q):0;
   allocate(w);
  }
  for(let ri=0;ri<rooms.length;ri++){
@@ -342,6 +361,7 @@ function configureWindowAirflow(g,p,simTime=0){
   if(k>=0)allocate({id:v.id,cells:[k],netQ:rate,localQ:0,penetration:v.type==='supply'?1:0});
  }
  g.netWindowFlow=net;g.airSources=airSources;g.pressureResult=result;g.windSpeedActual=gust;
+  prepareDoorFluxBoundaries(g,p);
  return result;
 }
 function renderWindows(){const host=$('windows');host.innerHTML='';if(!windows.length){host.innerHTML='<p class="hint">Brak okien. Dodaj je na planie lub przyciskiem poniżej.</p>';return;}
@@ -369,9 +389,13 @@ function renderWindows(){const host=$('windows');host.innerHTML='';if(!windows.l
  el.querySelector('[data-remove]').addEventListener('click',()=>{windows=windows.filter(x=>x.id!==w.id);renderWindows();reconfigureConnections();});
  }
 }
-function renderDoors(){const host=$('doors');host.innerHTML='';for(const d of doors){const el=document.createElement('div');el.className='door';const options=(selected)=>rooms.map(r=>`<option value="${r.id}" ${r.id===selected?'selected':''}>${escapeHtml(r.name)}</option>`).join('');el.innerHTML=`<div class="door-kind"><strong>${isOpening(d)?'Stały otwór · zawsze drożny':'Drzwi · kliknij podczas symulacji'}</strong><select data-role="kind"><option value="door" ${!isOpening(d)?'selected':''}>Drzwi</option><option value="opening" ${isOpening(d)?'selected':''}>Stały otwór</option></select></div><select data-role="a" aria-label="Pierwszy pokój">${options(d.a)}</select><select data-role="b" aria-label="Drugi pokój">${options(d.b)}</select><button data-remove class="danger" title="Usuń przejście">×</button><div class="door-settings"><label>Szer. [m]<input data-role="width" aria-label="Szerokość przejścia w metrach" type="number" min="0.3" max="8" step="0.1"></label><label>Pozycja [%]<input data-role="pos" type="number" min="0" max="100" step="5"></label><label style="margin-left:auto" ${isOpening(d)?'hidden':''}><input data-role="open" type="checkbox" ${isOpening(d)?'disabled':''}>otwarte</label></div>`;
-  host.appendChild(el);el.querySelector('[data-role=width]').value=d.width;el.querySelector('[data-role=pos]').value=Math.round(d.pos*100);el.querySelector('[data-role=open]').checked=d.open;
-  for(const input of el.querySelectorAll('[data-role]'))input.addEventListener('change',()=>{const old={...d};const role=input.dataset.role;if(role==='width')d.width=num(input.value,1,.3,12);else if(role==='pos')d.pos=num(input.value,50,0,100)/100;else if(role==='open')d.open=input.checked;else if(role==='kind'){d.kind=input.value==='opening'?'opening':'door';if(isOpening(d))d.open=true;}else d[role]=input.value;if(passageOverlap(d)){Object.assign(d,old);renderDoors();setStatus('Drzwi lub otwór nachodzą na inne przejście. Zmiana odrzucona.',true);return;}renderDoors();reconfigureConnections();});
+function renderDoors(){const host=$('doors');host.innerHTML='';for(const d of doors){const el=document.createElement('div');el.className='door';const options=(selected)=>rooms.map(r=>`<option value="${r.id}" ${r.id===selected?'selected':''}>${escapeHtml(r.name)}</option>`).join('');el.innerHTML=`<div class="door-kind"><strong>${isOpening(d)?'Stały otwór · zawsze drożny':'Drzwi · kliknij podczas symulacji'}</strong><select data-role="kind"><option value="door" ${!isOpening(d)?'selected':''}>Drzwi</option><option value="opening" ${isOpening(d)?'selected':''}>Stały otwór</option></select></div><select data-role="a" aria-label="Pierwszy pokój">${options(d.a)}</select><select data-role="b" aria-label="Drugi pokój">${options(d.b)}</select><button data-remove class="danger" title="Usuń przejście">×</button><div class="door-settings"><label>Szer. [m]<input data-role="width" aria-label="Szerokość przejścia w metrach" type="number" min="0.3" max="8" step="0.1"></label><label>Pozycja [%]<input data-role="pos" type="number" min="0" max="100" step="5"></label><label style="margin-left:auto" ${isOpening(d)?'hidden':''}><input data-role="open" type="checkbox" ${isOpening(d)?'disabled':''}>otwarte</label></div>
+  ${isOpening(d)?'':`<div class="door-leak-settings">
+    <label>Szczelina pod drzwiami [mm]<input data-role="gapMm" type="number" min="0" max="35" step="0.5" title="Zwykłe drzwi pokojowe: często około 10 mm szczeliny"></label>
+    <label>Nieszczelność ościeżnicy [cm²]<input data-role="frameLeakCm2" type="number" min="0" max="200" step="1" title="Dodatkowy równoważny przekrój, nie zmierzona szczelność"></label>
+   </div><div class="door-flow-note">Zamknięte drzwi: ≈ ${fmt(doorLeakArea({...d,open:false})*10000,0)} cm² przekroju; przy Δp=2 Pa ≈ ${fmt(doorFlowAtPa({...d,open:false}),1)} m³/h. Wartości modelowe, zależne od rzeczywistego ciśnienia.</div>`}`;
+  host.appendChild(el);el.querySelector('[data-role=width]').value=d.width;el.querySelector('[data-role=pos]').value=Math.round(d.pos*100);el.querySelector('[data-role=open]').checked=d.open;if(!isOpening(d)){el.querySelector('[data-role=gapMm]').value=doorGapMm(d);el.querySelector('[data-role=frameLeakCm2]').value=doorFrameCm2(d);}
+  for(const input of el.querySelectorAll('[data-role]'))input.addEventListener('change',()=>{const old={...d};const role=input.dataset.role;if(role==='width')d.width=num(input.value,1,.3,8);else if(role==='pos')d.pos=num(input.value,50,0,100)/100;else if(role==='open')d.open=input.checked;else if(role==='gapMm')d.gapMm=num(input.value,DEFAULT_DOOR_GAP_MM,0,35);else if(role==='frameLeakCm2')d.frameLeakCm2=num(input.value,DEFAULT_DOOR_FRAME_CM2,0,200);else if(role==='kind'){d.kind=input.value==='opening'?'opening':'door';if(isOpening(d))d.open=true;}else d[role]=input.value;if(passageOverlap(d)){Object.assign(d,old);renderDoors();setStatus('Drzwi lub otwór nachodzą na inne przejście. Zmiana odrzucona.',true);return;}renderDoors();reconfigureConnections();});
   el.querySelector('[data-remove]').addEventListener('click',()=>{doors=doors.filter(v=>v!==d);renderDoors();rebuild();});if(!shared(rooms.find(r=>r.id===d.a)||{},rooms.find(r=>r.id===d.b)||{})){el.querySelectorAll('select').forEach(x=>x.classList.add('door-invalid'));el.title='Pomieszczenia nie mają wspólnej ściany';}
  }
 }
@@ -383,13 +407,20 @@ function passageFraction(a,b,axis,from,to){
  if(!s||s.axis!==axis)return 0;
  const intervals=[];
  for(const d of doors){
-  if((!d.open&&!isOpening(d))||!((d.a===ra.id&&d.b===rb.id)||(d.b===ra.id&&d.a===rb.id)))continue;
+  if(!((d.a===ra.id&&d.b===rb.id)||(d.b===ra.id&&d.a===rb.id)))continue;
   const width=Math.min(d.width,s.to-s.from),center=s.from+clamp((s.to-s.from)*d.pos,width/2,(s.to-s.from)-width/2);
   const start=center-width/2,end=center+width/2;
-  if(end>start)intervals.push([Math.max(from,start),Math.min(to,end)]);
+  if(end>start){
+   // A 2D face represents the entire height of the zone; scale the closed-door
+   // face's permeability by the relative effective crack area. This avoids
+   // pretending a closed door is an open 2 m-high portal.
+   const fullArea=(end-start)*Math.min(userParameters.height,2.05);
+   const permeability=(isOpening(d)||d.open)?1:clamp(doorLeakArea(d)/Math.max(1e-9,fullArea),0,1);
+   if(permeability>0)intervals.push([Math.max(from,start),Math.min(to,end),permeability]);
+  }
  }
  intervals.sort((a,b)=>a[0]-b[0]);let coverage=0,edge=from;
- for(const [start,end] of intervals)if(end>Math.max(start,edge)){coverage+=end-Math.max(start,edge);edge=end;}
+ for(const [start,end,permeability] of intervals)if(end>Math.max(start,edge)){coverage+=(end-Math.max(start,edge))*permeability;edge=end;}
  return clamp(coverage/(to-from),0,1);
 }
 function buildGrid(){
@@ -479,10 +510,68 @@ function buildIntake(g,p){const origin=indexAt(p.x,p.y,g);const weights=new Floa
   if(sum>0)for(let k=0;k<g.n;k++)if(weights[k])weights[k]/=sum;
   const d=wallDistance(p,g);const eff=clamp(.7+.3*d/.55,.7,1); // uproszczona redukcja skuteczności przy przeszkodzie
   return{weights,efficiency:eff};}
+// Sprzężenie solvera wielostrefowego z siatką: strumienie na drzwiach są narzucone,
+// a pozostałe prędkości w KAŻDYM pokoju są korygowane projekcją ciśnienia.
+// Pozwala to zachować dokładną wymianę m³/h przez każde przejście, również pod zamkniętymi drzwiami.
+function prepareDoorFluxBoundaries(g,p){
+ const {nx,ny,n,ids,step:h,uOpen,vOpen}=g;
+ const freeU=Float32Array.from(uOpen),freeV=Float32Array.from(vOpen);
+ const fixedU=new Float32Array(uOpen.length),fixedV=new Float32Array(vOpen.length);
+ // Brak swobodnego przepływu pomiędzy pokojami. Krawędzie drzwi są warunkiem brzegowym.
+ for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){
+  const f=j*(nx+1)+i,a=ids[j*nx+i-1],b=ids[j*nx+i];
+  if(a>=0&&b>=0&&a!==b)freeU[f]=0;
+ }
+ for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){
+  const f=j*nx+i,a=ids[(j-1)*nx+i],b=ids[j*nx+i];
+  if(a>=0&&b>=0&&a!==b)freeV[f]=0;
+ }
+ let unmapped=0;
+ const index=new Map(rooms.map((r,i)=>[r.id,i]));
+ for(const door of doors){
+  const q=g.pressureResult?.doorFlows?.[door.id]||0;
+  if(Math.abs(q)<1e-8)continue;
+  const geo=passageGeometry(door),a=index.get(door.a),b=index.get(door.b);
+  if(!geo||a===undefined||b===undefined)continue;
+  const span=Math.max(1e-9,geo.to-geo.from);
+  const effective=(isOpening(door)||door.open)?1:clamp(doorLeakArea(door)/(span*Math.min(p.height,2.05)),0,1);
+  const hits=[];
+  if(geo.axis==='x'){
+   for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){
+    const f=j*(nx+1)+i;
+    if(!uOpen[f])continue;
+    const l=ids[j*nx+i-1],r=ids[j*nx+i];
+    if(!((l===a&&r===b)||(l===b&&r===a)))continue;
+    const overlap=Math.max(0,Math.min(geo.to,(j+1)*h)-Math.max(geo.from,j*h));
+    if(overlap>1e-9)hits.push({axis:'u',f,weight:overlap*effective,sign:l===a?1:-1,opening:uOpen[f]});
+   }
+  }else{
+   for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){
+    const f=j*nx+i;
+    if(!vOpen[f])continue;
+    const t=ids[(j-1)*nx+i],bot=ids[j*nx+i];
+    if(!((t===a&&bot===b)||(t===b&&bot===a)))continue;
+    const overlap=Math.max(0,Math.min(geo.to,(i+1)*h)-Math.max(geo.from,i*h));
+    if(overlap>1e-9)hits.push({axis:'v',f,weight:overlap*effective,sign:t===a?1:-1,opening:vOpen[f]});
+   }
+  }
+  const sum=hits.reduce((v,hit)=>v+hit.weight,0);
+  if(sum<1e-12){unmapped+=Math.abs(q);continue;}
+  for(const hit of hits){
+   // Prędkość przez częściowo otwartą ścianę; po pomnożeniu przez opening
+   // transportowany strumień dokładnie wynosi q * weight/sum.
+   const speed=hit.sign*q/3600*(hit.weight/sum)/(h*p.height*hit.opening);
+   if(hit.axis==='u')fixedU[hit.f]+=speed;else fixedV[hit.f]+=speed;
+  }
+ }
+ g.freeU=freeU;g.freeV=freeV;g.fixedU=fixedU;g.fixedV=fixedV;g.unmappedDoorFlow=unmapped;
+}
+
 // Ostateczna, precyzyjna projekcja pola prędkości metodą gradientów sprzężonych.
 // Rozwiązuje dyskretny problem Poissona na przepuszczalnych krawędziach siatki.
 function projectDivergenceFree(g,u,v,dt){
  const{nx,ny,n,step:h,ids,uOpen,vOpen}=g;
+ const freeU=g.freeU||uOpen,freeV=g.freeV||vOpen;
  const b=new Float64Array(n),r=new Float64Array(n),z=new Float64Array(n),d=new Float64Array(n),ap=new Float64Array(n),pressure=new Float64Array(n),degree=new Float64Array(n);
  let rhsNorm=0;
  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
@@ -490,14 +579,14 @@ function projectDivergenceFree(g,u,v,dt){
   const div=(u[j*(nx+1)+i+1]*uOpen[j*(nx+1)+i+1]-u[j*(nx+1)+i]*uOpen[j*(nx+1)+i]+v[(j+1)*nx+i]*vOpen[(j+1)*nx+i]-v[j*nx+i]*vOpen[j*nx+i])/h;
   const target=g.netWindowFlow?g.netWindowFlow[k]/g.cellVolume:0;
   b[k]=-(div-target)*h*h/dt;rhsNorm+=b[k]*b[k];
-  degree[k]=(i>0?uOpen[j*(nx+1)+i]:0)+(i<nx-1?uOpen[j*(nx+1)+i+1]:0)+(j>0?vOpen[j*nx+i]:0)+(j<ny-1?vOpen[(j+1)*nx+i]:0);
+  degree[k]=(i>0?freeU[j*(nx+1)+i]:0)+(i<nx-1?freeU[j*(nx+1)+i+1]:0)+(j>0?freeV[j*nx+i]:0)+(j<ny-1?freeV[(j+1)*nx+i]:0);
  }
  if(rhsNorm<1e-25)return;
  function laplace(vec,out){
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
    const k=j*nx+i;if(ids[k]<0||!degree[k]){out[k]=0;continue;}
-   let val=degree[k]*vec[k];if(i>0)val-=uOpen[j*(nx+1)+i]*vec[k-1];if(i<nx-1)val-=uOpen[j*(nx+1)+i+1]*vec[k+1];
-   if(j>0)val-=vOpen[j*nx+i]*vec[k-nx];if(j<ny-1)val-=vOpen[(j+1)*nx+i]*vec[k+nx];out[k]=val;
+   let val=degree[k]*vec[k];if(i>0)val-=freeU[j*(nx+1)+i]*vec[k-1];if(i<nx-1)val-=freeU[j*(nx+1)+i+1]*vec[k+1];
+   if(j>0)val-=freeV[j*nx+i]*vec[k-nx];if(j<ny-1)val-=freeV[(j+1)*nx+i]*vec[k+nx];out[k]=val;
   }
  }
  let rz=0;for(let k=0;k<n;k++){r[k]=b[k];z[k]=degree[k]?r[k]/degree[k]:0;d[k]=z[k];rz+=r[k]*z[k];}
@@ -510,10 +599,10 @@ function projectDivergenceFree(g,u,v,dt){
   if(Math.abs(rz)<1e-35)break;
   const beta=newRz/rz;for(let k=0;k<n;k++)d[k]=z[k]+beta*d[k];rz=newRz;
  }
- for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){const f=j*(nx+1)+i;if(uOpen[f])u[f]-=dt*(pressure[j*nx+i]-pressure[j*nx+i-1])/h;}
- for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){const f=j*nx+i;if(vOpen[f])v[f]-=dt*(pressure[j*nx+i]-pressure[(j-1)*nx+i])/h;}
+ for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){const f=j*(nx+1)+i;if(freeU[f])u[f]-=dt*(pressure[j*nx+i]-pressure[j*nx+i-1])/h;}
+ for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){const f=j*nx+i;if(freeV[f])v[f]-=dt*(pressure[j*nx+i]-pressure[(j-1)*nx+i])/h;}
 }
-function solveFlow(g,p,settings){const{nx,ny,step:h,ids,uOpen,vOpen,n}=g,un=(nx+1)*ny,vn=nx*(ny+1);
+function solveFlow(g,p,settings){const{nx,ny,step:h,ids,n}=g,uOpen=g.freeU||g.uOpen,vOpen=g.freeV||g.vOpen,un=(nx+1)*ny,vn=nx*(ny+1);
  const u=new Float32Array(un),v=new Float32Array(vn),pr=new Float32Array(n),div=new Float32Array(n),forceU=new Float32Array(un),forceV=new Float32Array(vn);
  const theta=settings.orientation*Math.PI/180,dx=Math.cos(theta),dy=Math.sin(theta),jet=settings.jet;
  // Jednostkowa dystrybucja siły wydmuchu w obszarze wylotu. Nie jest to model geometrii wentylatora.
@@ -539,17 +628,16 @@ function solveFlow(g,p,settings){const{nx,ny,step:h,ids,uOpen,vOpen,n}=g,un=(nx+
    for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){const f=j*(nx+1)+i;if(uOpen[f])u[f]-=dt*(pr[j*nx+i]-pr[j*nx+i-1])/h;}
    for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){const f=j*nx+i;if(vOpen[f])v[f]-=dt*(pr[j*nx+i]-pr[(j-1)*nx+i])/h;}
  }
- // Precyzyjna projekcja końcowa: uniformne C musi pozostać uniformne, niezależnie od ruchu.
+ // Narzuć sieciowe strumienie przez przejścia PRZED projekcją; macierz koryguje
+ // tylko prędkości wewnątrz pokojów (nie zmienia wartości na samych drzwiach).
+ if(g.fixedU)for(let f=0;f<un;f++)u[f]+=g.fixedU[f];
+ if(g.fixedV)for(let f=0;f<vn;f++)v[f]+=g.fixedV[f];
+ // Precyzyjna projekcja końcowa: jednolite C pozostaje jednolite.
  projectDivergenceFree(g,u,v,dt);
- // Globalna redukcja pola nie zaburza zerowej dywergencji; lokalne obcinanie by ją zaburzało.
+ // Nie skalujemy globalnie strumieni — złamałoby to zgodność z siecią ciśnień.
+ // Przy większych prędkościach zmniejszamy wyłącznie krok integracji PM₂.₅.
  let peak=0;for(let f=0;f<un;f++)peak=Math.max(peak,Math.abs(u[f]));for(let f=0;f<vn;f++)peak=Math.max(peak,Math.abs(v[f]));
- let windowFlowScale=1;
- if(peak>1.25){
-  windowFlowScale=1.25/peak;
-  for(let f=0;f<un;f++)u[f]*=windowFlowScale;
-  for(let f=0;f<vn;f++)v[f]*=windowFlowScale;
-  peak=1.25;
- }
+ const windowFlowScale=1;
  // Warunek stabilności jawnego, zachowawczego schematu adwekcji i dyfuzji.
  const D=settings.mixing,minRatio=Math.min(1,...g.cellVolumes.filter(v=>v>0).map(v=>v/g.cellVolume));
  const scalarDt=Math.max(.001,Math.min(1.0,h/Math.max(.08,peak)/3.3,h*h/(5.5*Math.max(.001,D)))*Math.min(1,minRatio));
@@ -558,12 +646,12 @@ function stepPM(g,cur,next,vel,uptake,p,dt,stats){const{nx,ny,n,ids,uOpen,vOpen,
  next.set(cur);const diffusion=p.mixing*dt/(h*h),advection=dt/h;
  for(let j=0;j<ny;j++)for(let i=1;i<nx;i++){const f=j*(nx+1)+i;if(!uOpen[f])continue;const l=j*nx+i-1,r=l+1,w=vel.u[f];const flux=uOpen[f]*(advection*w*(w>=0?cur[l]:cur[r])+diffusion*(cur[l]-cur[r]))*cellVolume;next[l]-=flux/cellVolumes[l];next[r]+=flux/cellVolumes[r];}
  for(let j=1;j<ny;j++)for(let i=0;i<nx;i++){const f=j*nx+i;if(!vOpen[f])continue;const a=(j-1)*nx+i,b=j*nx+i,w=vel.v[f];const flux=vOpen[f]*(advection*w*(w>=0?cur[a]:cur[b])+diffusion*(cur[a]-cur[b]))*cellVolume;next[a]-=flux/cellVolumes[a];next[b]+=flux/cellVolumes[b];}
- const ventilationByRoom=rooms.map(r=>1-Math.exp(-.20*(p.ach+(r.extraAch||0))*dt/3600)),deposition=1-Math.exp(-p.deposition*dt/3600);
+ const deposition=1-Math.exp(-p.deposition*dt/3600);
  // Lokalny pochłaniacz: całkowita potencjalna objętość oczyszczanego powietrza = CADR × dt.
  const q=p.cadr/3600*uptake.efficiency;
  let taken=0,negative=0;
  for(let k=0;k<n;k++)if(ids[k]>=0){const r=ids[k],src=rooms[r].emission*dt/(3600*roomVolumes[r]);
-  const before=next[k];let c=before+(p.outside-before)*ventilationByRoom[r]-before*deposition+src;
+  const before=next[k];let c=before-before*deposition+src;
   if(c<0){negative+=-c*cellVolumes[k];c=0;}
   const f=q*dt*uptake.weights[k]/cellVolumes[k];const after=c*Math.exp(-f);taken+=(c-after)*cellVolumes[k];next[k]=after;
  }
@@ -572,7 +660,7 @@ function stepPM(g,cur,next,vel,uptake,p,dt,stats){const{nx,ny,n,ids,uOpen,vOpen,
  for(const w of (g.airSources||[])){const target=p.outside*w.penetration;
    for(const k of w.cells){
     // Balanced advection through the window is matched by the interior velocity field.
-    const netQ=(w.netQ||0)*(vel.windowFlowScale??1)/3600/w.cells.length;
+    const netQ=(w.netQ||0)/3600/w.cells.length;
     if(netQ>0)next[k]+=dt*netQ*target/cellVolumes[k];
     else if(netQ<0)next[k]+=dt*netQ*cur[k]/cellVolumes[k];
     const exchange=1-Math.exp(-Math.max(0,w.localQ||0)*dt/3600/(w.cells.length*cellVolumes[k]));
@@ -581,29 +669,30 @@ function stepPM(g,cur,next,vel,uptake,p,dt,stats){const{nx,ny,n,ids,uOpen,vOpen,
  }
  if(stats){stats.removed+=taken;stats.clipped+=negative;}
  return next;}
-function applyConfiguration(){getInputs();if(!Number.isFinite(userParameters.height))throw Error('Nieprawidłowa wysokość.');const g=buildGrid();g.windowSources=mapWindowSources(g,userParameters);configureWindowAirflow(g,userParameters,elapsed);weatherDiagnostics=g.pressureResult;purifier=nearestValid(purifier.x,purifier.y,g);if(!purifier)throw Error('Żaden pokój nie mieści całego oczyszczacza. Zmniejsz jego średnicę lub powiększ pomieszczenie.');const vel=solveFlow(g,purifier,userParameters),uptake=buildIntake(g,purifier);return{g,vel,uptake};}
+function applyConfiguration(){getInputs();if(!Number.isFinite(userParameters.height))throw Error('Nieprawidłowa wysokość.');const g=buildGrid();g.windowSources=mapWindowSources(g,userParameters);configureWindowAirflow(g,userParameters,elapsed);weatherDiagnostics=g.pressureResult;purifier=nearestValid(purifier.x,purifier.y,g);if(!purifier)throw Error('Żaden pokój nie mieści całego oczyszczacza. Zmniejsz jego średnicę lub powiększ pomieszczenie.');if(g.unmappedDoorFlow>.05)throw Error('Siatka pomija przejście o niezerowym strumieniu — zmniejsz rozmiar komórki.');const vel=solveFlow(g,purifier,userParameters),uptake=buildIntake(g,purifier);return{g,vel,uptake};}
 function rebuild(){playing=false;$('play').textContent='▶ Start';benchmarkToken++;rankingResults=null;$('compare').disabled=false;$('ranking').innerHTML='';$('compareProgress').style.width='0';$('compareStatus').textContent='Wyniki zależą od aktualnego układu ścian, emisji i CADR.';
- if(!rooms.length){grid=null;concentration=null;velocity=null;intake=null;elapsed=0;removed=0;$('play').disabled=true;$('compare').disabled=true;updateMetrics();render(performance.now());setStatus('Pusty plan. Kliknij „Rysuj pokój” i przeciągnij po planszy, aby utworzyć pierwszy pokój.');return;}
- try{const {g,vel,uptake}=applyConfiguration();grid=g;velocity=vel;intake=uptake;concentration=initConcentration(g);buffer=new Float64Array(g.n);elapsed=0;removed=0;lastGustUpdate=0;$('play').disabled=false;$('compare').disabled=false;updateMetrics();render(performance.now());const bad=doors.some(d=>!shared(rooms.find(r=>r.id===d.a)||{},rooms.find(r=>r.id===d.b)||{}));setStatus((bad?'Uwaga: co najmniej jedno przejście nie łączy sąsiadujących pomieszczeń. ':'')+(g.pressureResult?.converged?'':'UWAGA: brak drogi wyrównania ciśnienia — kierunkowe przepływy wstrzymane. Sprawdź otwory i wentylację. ')+'Model przeliczony. Kliknij Start lub ustaw oczyszczacz.');}catch(e){grid=null;concentration=null;$('play').disabled=true;$('compare').disabled=true;updateMetrics();setStatus('Błąd planu: '+e.message+'. Włącz narzędzie Przesuń pokój albo popraw wymiary.',true);render(performance.now());}}
+ if(!rooms.length){grid=null;concentration=null;velocity=null;intake=null;elapsed=0;removed=0;clippedMass=0;$('play').disabled=true;$('compare').disabled=true;updateMetrics();render(performance.now());setStatus('Pusty plan. Kliknij „Rysuj pokój” i przeciągnij po planszy, aby utworzyć pierwszy pokój.');return;}
+ try{const {g,vel,uptake}=applyConfiguration();grid=g;velocity=vel;intake=uptake;concentration=initConcentration(g);buffer=new Float64Array(g.n);elapsed=0;removed=0;clippedMass=0;lastGustUpdate=0;$('play').disabled=false;$('compare').disabled=false;updateMetrics();render(performance.now());const bad=doors.some(d=>!shared(rooms.find(r=>r.id===d.a)||{},rooms.find(r=>r.id===d.b)||{}));setStatus((bad?'Uwaga: co najmniej jedno przejście nie łączy sąsiadujących pomieszczeń. ':'')+(g.pressureResult?.converged?'':'UWAGA: brak drogi wyrównania ciśnienia — kierunkowe przepływy wstrzymane. Sprawdź otwory i wentylację. ')+'Model przeliczony. Kliknij Start lub ustaw oczyszczacz.');}catch(e){grid=null;concentration=null;$('play').disabled=true;$('compare').disabled=true;updateMetrics();setStatus('Błąd planu: '+e.message+'. Włącz narzędzie Przesuń pokój albo popraw wymiary.',true);render(performance.now());}}
 function reconfigureConnections(){
  // Układ pokojów pozostaje ten sam: zachowaj aktualne stężenia i zegar, a przelicz
  // wyłącznie przepływy przez drzwi, stałe otwory oraz okna.
  if(!grid||!concentration){rebuild();return;}
- const saved={concentration,elapsed,removed,playing};
- try{getInputs();const g=buildGrid();g.windowSources=mapWindowSources(g,userParameters);configureWindowAirflow(g,userParameters,elapsed);weatherDiagnostics=g.pressureResult;const same=g.n===grid.n&&g.nx===grid.nx&&g.ny===grid.ny&&g.ids.every((v,i)=>v===grid.ids[i]);
+ const saved={concentration,elapsed,removed,clippedMass,playing};
+ try{getInputs();const g=buildGrid();g.windowSources=mapWindowSources(g,userParameters);configureWindowAirflow(g,userParameters,elapsed);weatherDiagnostics=g.pressureResult;const same=g.n===grid.n&&g.nx===grid.nx&&g.ny===grid.ny&&Math.abs(g.step-grid.step)<1e-10&&g.ids.every((v,i)=>v===grid.ids[i]);
  if(!same){rebuild();return;}
+ if(g.unmappedDoorFlow>.05)throw Error('Siatka pomija przejście o niezerowym strumieniu; zmniejsz rozmiar komórki.');
  const vel=solveFlow(g,purifier,userParameters),uptake=buildIntake(g,purifier);
- grid=g;velocity=vel;intake=uptake;concentration=saved.concentration;elapsed=saved.elapsed;removed=saved.removed;playing=saved.playing;
+ grid=g;velocity=vel;intake=uptake;concentration=saved.concentration;elapsed=saved.elapsed;removed=saved.removed;clippedMass=saved.clippedMass;playing=saved.playing;
  benchmarkToken++;rankingResults=null;$('ranking').innerHTML='';$('compareProgress').style.width='0';$('compareStatus').textContent='Zmieniono drzwi, okna lub wentylację. Uruchom porównanie ponownie.';
  $('play').textContent=playing?'❚❚ Pauza':'▶ Start';updateMetrics();render(performance.now());
  }catch(e){playing=false;setStatus('Nie udało się zmienić przepływu: '+e.message,true);}
 }
-function togglePassage(d){if(isOpening(d)){setStatus('To stały otwór — nie ma skrzydła i nie można go zamknąć.');return;}d.open=!d.open;renderDoors();reconfigureConnections();setStatus('Drzwi '+(d.open?'otwarte':'zamknięte')+'. Symulacja zachowała aktualny czas i stężenia.');}
+function togglePassage(d){if(isOpening(d)){setStatus('To stały otwór — nie ma skrzydła i nie można go zamknąć.');return;}d.open=!d.open;renderDoors();reconfigureConnections();setStatus('Drzwi '+(d.open?'otwarte':'zamknięte (z przepływem przez szczeliny)')+'. Symulacja zachowała aktualny czas i stężenia.');}
 function toggleWindow(w){w.state=w.state==='closed'?'tilt':w.state==='tilt'?'open':'closed';renderWindows();reconfigureConnections();setStatus('Okno: '+({closed:'zamknięte',tilt:'rozszczelnione',open:'otwarte'}[w.state])+'. Zaktualizowano wymianę z zewnątrz.');}
 function invalidate(msg){if(msg)setStatus(msg);}
-function reset(){if(!grid)return;playing=false;$('play').textContent='▶ Start';concentration=initConcentration(grid);buffer=new Float64Array(grid.n);elapsed=0;removed=0;updateMetrics();render(performance.now());}
+function reset(){if(!grid)return;playing=false;$('play').textContent='▶ Start';concentration=initConcentration(grid);buffer=new Float64Array(grid.n);elapsed=0;removed=0;clippedMass=0;updateMetrics();render(performance.now());}
 function setStatus(message,isError=false){$('status').textContent=message;$('status').className='status'+(isError?' error':'');}
-function updateMetrics(){if(!grid||!concentration){for(const k of ['areaMetric','volumeMetric','pmMetric','eachMetric','removedMetric','windowFlowMetric'])$(k).textContent='—';$('clock').textContent='00:00';return;}const vals=roomAverages(),p90=roomPercentiles();let total=0,totalVolume=0;for(let k=0;k<vals.length;k++){total+=vals[k]*grid.roomVolumes[k];totalVolume+=grid.roomVolumes[k];}$('areaMetric').textContent=fmt(grid.totalArea,1)+' m²';$('volumeMetric').textContent=fmt(grid.totalArea*userParameters.height,0)+' m³';$('pmMetric').textContent=fmt(total/Math.max(1,totalVolume),1);$('eachMetric').textContent=fmt(userParameters.cadr/Math.max(1,grid.totalArea*userParameters.height),2)+' /h';$('removedMetric').textContent=fmt(removed/1000,2)+' mg';$('windowFlowMetric').textContent=fmt((grid.pressureResult?.totalSupply||0)*(velocity?.windowFlowScale??1),1)+' m³/h';
+function updateMetrics(){if(!grid||!concentration){for(const k of ['areaMetric','volumeMetric','pmMetric','eachMetric','removedMetric','clippedMetric','windowFlowMetric'])$(k).textContent='—';$('clock').textContent='00:00';return;}const vals=roomAverages(),p90=roomPercentiles();let total=0,totalVolume=0;for(let k=0;k<vals.length;k++){total+=vals[k]*grid.roomVolumes[k];totalVolume+=grid.roomVolumes[k];}$('areaMetric').textContent=fmt(grid.totalArea,1)+' m²';$('volumeMetric').textContent=fmt(grid.totalArea*userParameters.height,0)+' m³';$('pmMetric').textContent=fmt(total/Math.max(1,totalVolume),1);$('eachMetric').textContent=fmt(userParameters.cadr/Math.max(1,grid.totalArea*userParameters.height),2)+' /h';$('removedMetric').textContent=fmt(removed/1000,2)+' mg';if($('clippedMetric'))$('clippedMetric').textContent=fmt(clippedMass/1000,3)+' mg';$('windowFlowMetric').textContent=fmt(grid.pressureResult?.totalSupply||0,1)+' m³/h';
  if($('pressureMetric'))$('pressureMetric').textContent=fmt(grid.pressureResult?.maxResidual||0,2)+' m³/h';
  if($('windActualMetric'))$('windActualMetric').textContent=fmt(grid.windSpeedActual||0,1)+' m/s';$('clock').textContent=String(Math.floor(elapsed/3600)).padStart(2,'0')+':'+String(Math.floor(elapsed%3600/60)).padStart(2,'0');const body=$('roomStats');body.innerHTML='';for(let i=0;i<rooms.length;i++){const tr=document.createElement('tr');tr.innerHTML=`<td>${escapeHtml(rooms[i].name)}</td><td>${fmt(rooms[i].w*rooms[i].h,1)}</td><td>${fmt(vals[i],1)} <span class="unit">µg/m³</span></td><td>${fmt(p90[i],1)}</td>`;body.appendChild(tr);}}
 function roomPercentiles(){
@@ -749,7 +838,7 @@ ctx.fillStyle='#091421';ctx.fillRect(0,0,W,H);if(!grid){ctx.fillStyle='#f6a8a8';
    for(let j=1;j<grid.ny-1;j+=stride)for(let i=1;i<grid.nx-1;i+=stride){const k=j*grid.nx+i;if(grid.ids[k]<0)continue;let u=(velocity.u[j*(grid.nx+1)+i]+velocity.u[j*(grid.nx+1)+i+1])*.5,v=(velocity.v[j*grid.nx+i]+velocity.v[(j+1)*grid.nx+i])*.5;const sp=Math.hypot(u,v);if(sp<.008)continue;const len=clamp(sp*55,5,23),ox=X((i+.5)*grid.step),oy=Y((j+.5)*grid.step),xx=ox+u/sp*len,yy=oy+v/sp*len;ctx.globalAlpha=clamp(sp*2.2,.25,1);ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(xx,yy);ctx.stroke();ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(xx-u/sp*5-v/sp*2.7,yy-v/sp*5+u/sp*2.7);ctx.lineTo(xx-u/sp*5+v/sp*2.7,yy-v/sp*5-u/sp*2.7);ctx.closePath();ctx.fill();}ctx.globalAlpha=1;
  }
  // Granice komórek przy ścianach = ściany pokoju, otwory drzwiowe pozostają wolne.
- ctx.lineWidth=3.4;ctx.lineCap='square';ctx.strokeStyle='#edf3ff';ctx.beginPath();for(let j=0;j<grid.ny;j++)for(let i=0;i<grid.nx;i++){const k=j*grid.nx+i;if(grid.ids[k]<0)continue;const l=X(i*grid.step),r=X((i+1)*grid.step),top=Y(j*grid.step),b=Y((j+1)*grid.step);if(!grid.uOpen[j*(grid.nx+1)+i]){ctx.moveTo(l,top);ctx.lineTo(l,b);}if(!grid.uOpen[j*(grid.nx+1)+i+1]){ctx.moveTo(r,top);ctx.lineTo(r,b);}if(!grid.vOpen[j*grid.nx+i]){ctx.moveTo(l,top);ctx.lineTo(r,top);}if(!grid.vOpen[(j+1)*grid.nx+i]){ctx.moveTo(l,b);ctx.lineTo(r,b);}}
+ ctx.lineWidth=3.4;ctx.lineCap='square';ctx.strokeStyle='#edf3ff';ctx.beginPath();for(let j=0;j<grid.ny;j++)for(let i=0;i<grid.nx;i++){const k=j*grid.nx+i;if(grid.ids[k]<0)continue;const l=X(i*grid.step),r=X((i+1)*grid.step),top=Y(j*grid.step),b=Y((j+1)*grid.step);if(grid.uOpen[j*(grid.nx+1)+i]<.02){ctx.moveTo(l,top);ctx.lineTo(l,b);}if(grid.uOpen[j*(grid.nx+1)+i+1]<.02){ctx.moveTo(r,top);ctx.lineTo(r,b);}if(grid.vOpen[j*grid.nx+i]<.02){ctx.moveTo(l,top);ctx.lineTo(r,top);}if(grid.vOpen[(j+1)*grid.nx+i]<.02){ctx.moveTo(l,b);ctx.lineTo(r,b);}}
  ctx.stroke();drawPassages(X,Y,scale);drawWindows(X,Y,scale);drawVents(X,Y,scale);drawEmissions(X,Y,scale);
  ctx.textAlign='center';ctx.textBaseline='middle';const averages=roomAverages();
  for(let i=0;i<rooms.length;i++){
@@ -770,9 +859,12 @@ ctx.fillStyle='#091421';ctx.fillRect(0,0,W,H);if(!grid){ctx.fillStyle='#f6a8a8';
  ctx.textAlign='right';ctx.fillStyle='#8298b1';ctx.font='12px system-ui';ctx.fillText(`${fmt(grid.maxX,1)} × ${fmt(grid.maxY,1)} m`,W-17,H-21);$('legendMax').textContent=fmt(maxC,0)+' µg/m³';$('legendMin').textContent=fmt(minC,0)+' µg/m³';}
 function tick(now){if(playing&&grid&&concentration){
  if(userParameters.windFlowEnabled&&userParameters.gustPercent>0&&elapsed-lastGustUpdate>=120){
-  configureWindowAirflow(grid,userParameters,elapsed);weatherDiagnostics=grid.pressureResult;velocity=solveFlow(grid,purifier,userParameters);lastGustUpdate=elapsed;
+  configureWindowAirflow(grid,userParameters,elapsed);weatherDiagnostics=grid.pressureResult;
+   if(grid.unmappedDoorFlow>.05){playing=false;setStatus('Nie można odwzorować przepływu drzwi na siatce: wybierz drobniejszy krok siatki.',true);}
+   else velocity=solveFlow(grid,purifier,userParameters);
+   lastGustUpdate=elapsed;
  }
- const desired=Number($('speed').value)||120,wallSeconds= Math.min(.06,Math.max(.008,(now-lastFrame)/1000));const simSeconds=desired*wallSeconds,maxTime=simulationTimeLimit();let advanced=0,loops=0;const stats={removed:0,clipped:0};while(advanced+1e-9<simSeconds&&elapsed<maxTime&&loops<110){const dt=Math.min(velocity.scalarDt,simSeconds-advanced,maxTime-elapsed);if(dt<=0)break;stepPM(grid,concentration,buffer,velocity,intake,userParameters,dt,stats);[concentration,buffer]=[buffer,concentration];elapsed+=dt;advanced+=dt;loops++;}removed+=stats.removed;if(elapsed>=maxTime-.001){playing=false;$('play').textContent='▶ Start';setStatus('Osiągnięto koniec ustawionego czasu symulacji.');}
+ const desired=Number($('speed').value)||120,wallSeconds= Math.min(.06,Math.max(.008,(now-lastFrame)/1000));const simSeconds=desired*wallSeconds,maxTime=simulationTimeLimit();let advanced=0,loops=0;const stats={removed:0,clipped:0};while(advanced+1e-9<simSeconds&&elapsed<maxTime&&loops<110){const dt=Math.min(velocity.scalarDt,simSeconds-advanced,maxTime-elapsed);if(dt<=0)break;stepPM(grid,concentration,buffer,velocity,intake,userParameters,dt,stats);[concentration,buffer]=[buffer,concentration];elapsed+=dt;advanced+=dt;loops++;}removed+=stats.removed;clippedMass+=stats.clipped;if(elapsed>=maxTime-.001){playing=false;$('play').textContent='▶ Start';setStatus('Osiągnięto koniec ustawionego czasu symulacji.');}
  }lastFrame=now;if(now-lastRender>95){render(now);updateMetrics();lastRender=now;}requestAnimationFrame(tick);}
 function placePurifier(x,y,roomId=null){
  if(!grid)return;
@@ -780,12 +872,21 @@ function placePurifier(x,y,roomId=null){
  if(!r){setStatus('Oczyszczacz można ustawić tylko wewnątrz istniejącego pokoju.',true);return;}
  const target=purifierPositionInRoom(r,x,y,grid);
  if(!target){setStatus('Pokój jest zbyt mały na oczyszczacz o tej średnicy. Zmniejsz średnicę urządzenia.',true);return;}
- purifier=target;rebuild();
+ purifier=target;
+ // Zmiana lokalizacji oczyszczacza nie zmienia geometrii, ciśnienia ani czasu.
+ // Przelicz tylko jego pole wymuszenia i pobór pyłu.
+ velocity=solveFlow(grid,purifier,userParameters);
+ intake=buildIntake(grid,purifier);
+ benchmarkToken++;rankingResults=null;$('ranking').innerHTML='';
+ $('compareStatus').textContent='Przeniesiono oczyszczacz — uruchom ranking ponownie.';
+ updateMetrics();render(performance.now());
  if(Math.hypot(target.x-x,target.y-y)>.01)setStatus('Przesunięto oczyszczacz do najbliższej dozwolonej pozycji. Cały okrąg mieści się w pokoju „'+r.name+'”.');
 }
 function canvasXY(e){const box=canvas.getBoundingClientRect(),coordX=(e.clientX-box.left)*canvas.width/box.width,coordY=(e.clientY-box.top)*canvas.height/box.height;const{scale,offX,offY}=viewTransform;return{x:(coordX-offX)/scale,y:(coordY-offY)/scale};}
 function download(filename,blob){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function runComparison(){if(!grid)return;benchmarkToken++;const token=benchmarkToken;playing=false;$('play').textContent='▶ Start';$('compare').disabled=true;$('ranking').innerHTML='';$('compareProgress').style.width='0';const g=grid,p={...userParameters,gustPercent:0},time=Math.min(1800,simulationTimeLimit(p)),targetId=$('targetRoom').value,targetIndex=rooms.findIndex(r=>r.id===targetId),candidates=[{label:'Bez oczyszczacza',pos:null}];for(let i=0;i<rooms.length;i++){const r=rooms[i];const pos=purifierPositionInRoom(r,r.x+r.w/2,r.y+r.h/2,g);if(pos)candidates.push({label:r.name+' · środek',pos});}if(!candidates.some(c=>c.pos&&Math.hypot(c.pos.x-purifier.x,c.pos.y-purifier.y)<.35))candidates.push({label:'Moje ustawienie',pos:{...purifier}});
+async function runComparison(){if(!grid)return;benchmarkToken++;const token=benchmarkToken;playing=false;$('play').textContent='▶ Start';$('compare').disabled=true;$('ranking').innerHTML='';$('compareProgress').style.width='0';const p={...userParameters,gustPercent:0},g=buildGrid();g.windowSources=mapWindowSources(g,p);configureWindowAirflow(g,p,0);
+ if(g.unmappedDoorFlow>.05){setStatus('Ranking niewiarygodny: siatka nie odwzorowuje przepływu przez drzwi. Wybierz mniejszą komórkę.',true);return;}
+ const time=Math.min(1800,simulationTimeLimit(p)),targetId=$('targetRoom').value,targetIndex=rooms.findIndex(r=>r.id===targetId),candidates=[{label:'Bez oczyszczacza',pos:null}];for(let i=0;i<rooms.length;i++){const r=rooms[i];const pos=purifierPositionInRoom(r,r.x+r.w/2,r.y+r.h/2,g);if(pos)candidates.push({label:r.name+' · środek',pos});}if(!candidates.some(c=>c.pos&&Math.hypot(c.pos.x-purifier.x,c.pos.y-purifier.y)<.35))candidates.push({label:'Moje ustawienie',pos:{...purifier}});
  const results=[];const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));try{
  for(let idx=0;idx<candidates.length;idx++){
   if(token!==benchmarkToken)return;const candidate=candidates[idx];$('compareStatus').textContent=`Obliczanie wariantu ${idx+1}/${candidates.length}: ${candidate.label}…`;await yieldUI();const settings={...p,cadr:candidate.pos?p.cadr:0,jet:candidate.pos?p.jet:0};const loc=candidate.pos||purifier;const vf=solveFlow(g,loc,settings);const filter=candidate.pos?buildIntake(g,loc):{weights:new Float64Array(g.n),efficiency:0};let c=initConcentration(g),b=new Float64Array(g.n);const dt=vf.scalarDt,steps=Math.ceil(time/dt);let sumDose=0,lastAvg=0;
@@ -794,7 +895,7 @@ async function runComparison(){if(!grid)return;benchmarkToken++;const token=benc
  }
  if(token!==benchmarkToken)return;rankingResults=results;drawRanking();$('compareStatus').textContent=`Wyniki dla ${Math.round(time/60)} min; im niższe stężenie w wybranym obszarze, tym lepiej. Ranking orientacyjny.`;setStatus('Porównanie ukończone: wszystkie warianty miały identyczne parametry początkowe.');
  }catch(e){setStatus('Błąd porównania: '+e.message,true);}finally{$('compare').disabled=false;}}
-function drawRanking(){if(!rankingResults)return;const root=$('ranking');root.innerHTML='';const base=rankingResults[0],sort=rankingResults.slice(1).sort((a,b)=>a.dose-b.dose),max=Math.max(...rankingResults.map(r=>r.dose),.1), best=sort[0];const p=document.createElement('p');p.className='comparison-meta';p.innerHTML=`Bez oczyszczacza: <strong>${fmt(base.final,1)} µg/m³</strong> po teście.` ;root.appendChild(p);
+function drawRanking(){if(!rankingResults)return;const root=$('ranking');root.innerHTML='';const base=rankingResults[0],sort=rankingResults.slice(1).sort((a,b)=>a.dose-b.dose),max=Math.max(...rankingResults.map(r=>r.dose),.1);const p=document.createElement('p');p.className='comparison-meta';p.innerHTML=`Bez oczyszczacza: <strong>${fmt(base.final,1)} µg/m³</strong> po teście.` ;root.appendChild(p);
  sort.forEach((r,i)=>{const item=document.createElement('div');item.className='rankitem'+(i===0?' best':'');const gain=base.dose>0?100*(1-r.dose/base.dose):0;item.innerHTML=`<strong>${i+1}. ${escapeHtml(r.label)} <span class="muted">· ${fmt(r.final,1)} µg/m³</span></strong><div class="minibar"><div class="mini"><div style="width:${clamp(r.dose/max*100,0,100)}%"></div></div><span class="unit" style="min-width:50px">${gain>=0?'-':'+'}${fmt(Math.abs(gain),0)}%*</span></div><button>Ustaw</button>`;item.querySelector('button').addEventListener('click',()=>{purifier={...r.pos};rebuild();setStatus(`Oczyszczacz ustawiony w pokoju: ${r.label}.`);});root.appendChild(item);});const note=document.createElement('div');note.className='footnote';note.textContent='* Zmiana średniej ekspozycji względem wariantu bez filtra w czasie testu. Nie jest to zmierzona skuteczność urządzenia. Podobne wyniki należy traktować jako remis.';root.appendChild(note);}
 $('preset').addEventListener('click',preset);$('newplan').addEventListener('click',emptyPlan);$('addRoom').addEventListener('click',()=>{if(rooms.length>=14)return alert('Model obsługuje maksymalnie 14 pokoi.');let pos=null;for(let y=0;y<=32&&!pos;y+=.5)for(let x=0;x<=32;x+=.5){const candidate={x,y,w:3,h:3};if(candidateValid(candidate,null)){pos=candidate;break;}}if(!pos){setStatus('Brak miejsca na pokój 3×3 m. Użyj narzędzia rysowania lub zmień układ.',true);return;}rooms.push(room('Nowy pokój',pos.x,pos.y,3,3,0));renderEditors();rebuild();setTool('move');});$('addDoor').addEventListener('click',()=>{if(rooms.length<2)return;const pairs=[];for(let i=0;i<rooms.length;i++)for(let j=i+1;j<rooms.length;j++)if(shared(rooms[i],rooms[j]))pairs.push([rooms[i],rooms[j]]);if(!pairs.length){setStatus('Najpierw ustaw pokoje tak, aby miały wspólną ścianę.',true);return;}const pair=pairs.find(([a,b])=>!doors.some(d=>d.a===a.id&&d.b===b.id||d.a===b.id&&d.b===a.id))||pairs[0];doors.push({id:uid(),a:pair[0].id,b:pair[1].id,width:1.2,pos:.5,open:true,kind:'door'});renderDoors();rebuild();});
 $('addOpening').addEventListener('click',()=>{setTool('opening');setStatus('Kliknij wspólną ścianę dwóch pokoi, aby dodać stały otwór.');});
@@ -896,8 +997,7 @@ function endCanvasGesture(e,cancel=false){
  if(g.kind==='move'){
   const moving=rooms.find(r=>r.id===g.roomId);
   if(!moving)return;
-  if(!candidateValid(g.preview,g.roomId)){setStatus('Nie przesunięto pokoju: kolizja lub wyjście poza plan. Zmiana cofnięta.',true);render(performance.now());return;}
-  Object.assign(moving,{x:cm(g.preview.x),y:cm(g.preview.y)});renderEditors();rebuild();setStatus('Przesunięto „'+moving.name+'” na X='+fmt(moving.x,2)+' m, Y='+fmt(moving.y,2)+' m. Sprawdź połączenia drzwi.');
+  if(!candidateValid(g.preview,g.roomId)){setStatus('Nie przesunięto pokoju: kolizja lub wyjście poza plan. Zmiana cofnięta.',true);render(performance.now());return;}  Object.assign(moving,{x:cm(g.preview.x),y:cm(g.preview.y)});renderEditors();rebuild();setStatus('Przesunięto „'+moving.name+'” na X='+fmt(moving.x,2)+' m, Y='+fmt(moving.y,2)+' m. Sprawdź połączenia drzwi.');
  }
 }
 canvas.addEventListener('pointerup',e=>endCanvasGesture(e));
@@ -931,7 +1031,9 @@ canvas.addEventListener('pointermove',e=>{
 canvas.addEventListener('pointerleave',()=>{editorHover=null;canvas.style.cursor='crosshair';if(['delete','window','item'].includes(editorMode)&&!editorGesture)render(performance.now());});
 canvas.addEventListener('pointercancel',e=>endCanvasGesture(e,true));
 
-$('saveJson').addEventListener('click',()=>{getInputs();const data={version:6,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};download('aeroplan-mieszkanie.json',new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}));});$('loadJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const doc=JSON.parse(await file.text());if(!Array.isArray(doc.rooms)||doc.rooms.length>14)throw Error('Niepoprawna lista pokojów.');const rr=doc.rooms.map(x=>({id:String(x.id||uid()),name:String(x.name||'Pokój').slice(0,36),x:num(x.x,0,0,35),y:num(x.y,0,0,35),w:num(x.w,3,.5,35),h:num(x.h,3,.5,35),emission:num(x.emission,0,0,100000),extraAch:num(x.extraAch,0,0,5),supplyM3h:num(x.supplyM3h,0,0,600),exhaustM3h:num(x.exhaustM3h,0,0,600),supplyX:num(x.supplyX,.3,0,35),supplyY:num(x.supplyY,.3,0,35),exhaustX:num(x.exhaustX,Math.max(.3,Number(x.w||3)-.3),0,35),exhaustY:num(x.exhaustY,Math.max(.3,Number(x.h||3)-.3),0,35)}));const idset=new Set(rr.map(r=>r.id));if(idset.size!==rr.length)throw Error('Powtarzające się identyfikatory pokojów.');const dd=(Array.isArray(doc.doors)?doc.doors:[]).filter(d=>idset.has(String(d.a))&&idset.has(String(d.b))).map(d=>({id:uid(),a:String(d.a),b:String(d.b),width:num(d.width,1,.3,12),pos:num(d.pos,.5,0,1),open:d.open!==false,kind:d.kind==='opening'?'opening':'door'}));const ww=(Array.isArray(doc.windows)?doc.windows:[]).filter(w=>idset.has(String(w.roomId))).map(w=>({id:uid(),roomId:String(w.roomId),side:['left','right','top','bottom'].includes(w.side)?w.side:'top',pos:num(w.pos,.5,0,1),width:num(w.width,1.2,.3,5),height:num(w.height,1.35,.3,3),state:['closed','tilt','open'].includes(w.state)?w.state:'closed',q100:num(w.q100,3,0,100),gapMm:num(w.gapMm,5,0,50),openPercent:num(w.openPercent,10,0,100)}));validateRooms(rr);
+$('saveJson').addEventListener('click',()=>{getInputs();const data={version:7,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};download('aeroplan-mieszkanie.json',new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}));});$('loadJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const doc=JSON.parse(await file.text());
+ if(doc.parameters){for(const [key,value] of Object.entries(doc.parameters)){if(!(key in DEFAULTS))continue;const booleanKey=key==='windFlowEnabled'||key==='timeLimitEnabled';if(booleanKey?typeof value!=='boolean':!(typeof value==='number'&&Number.isFinite(value)))throw Error('Niepoprawny parametr symulacji: '+key);}}
+ if(!Array.isArray(doc.rooms)||doc.rooms.length>14)throw Error('Niepoprawna lista pokojów.');const rr=doc.rooms.map(x=>({id:String(x.id||uid()),name:String(x.name||'Pokój').slice(0,36),x:num(x.x,0,0,35),y:num(x.y,0,0,35),w:num(x.w,3,.5,35),h:num(x.h,3,.5,35),emission:num(x.emission,0,0,100000),extraAch:num(x.extraAch,0,0,5),supplyM3h:num(x.supplyM3h,0,0,600),exhaustM3h:num(x.exhaustM3h,0,0,600),supplyX:num(x.supplyX,.3,0,35),supplyY:num(x.supplyY,.3,0,35),exhaustX:num(x.exhaustX,Math.max(.3,Number(x.w||3)-.3),0,35),exhaustY:num(x.exhaustY,Math.max(.3,Number(x.h||3)-.3),0,35)}));const idset=new Set(rr.map(r=>r.id));if(idset.size!==rr.length)throw Error('Powtarzające się identyfikatory pokojów.');const dd=(Array.isArray(doc.doors)?doc.doors:[]).filter(d=>idset.has(String(d.a))&&idset.has(String(d.b))).map(d=>({id:uid(),a:String(d.a),b:String(d.b),width:num(d.width,1,.3,8),pos:num(d.pos,.5,0,1),open:d.open!==false,kind:d.kind==='opening'?'opening':'door',gapMm:num(d.gapMm,DEFAULT_DOOR_GAP_MM,0,35),frameLeakCm2:num(d.frameLeakCm2,DEFAULT_DOOR_FRAME_CM2,0,200)}));const ww=(Array.isArray(doc.windows)?doc.windows:[]).filter(w=>idset.has(String(w.roomId))).map(w=>({id:uid(),roomId:String(w.roomId),side:['left','right','top','bottom'].includes(w.side)?w.side:'top',pos:num(w.pos,.5,0,1),width:num(w.width,1.2,.3,5),height:num(w.height,1.35,.3,3),state:['closed','tilt','open'].includes(w.state)?w.state:'closed',q100:num(w.q100,3,0,100),gapMm:num(w.gapMm,5,0,50),openPercent:num(w.openPercent,10,0,100)}));validateRooms(rr);
  for(const w of ww)if(!validWindow(w,rr,ww))throw Error('Nieprawidłowa geometria albo nakładające się okna w importowanym pliku.');
  for(const d of dd)if(!shared(rr.find(r=>r.id===d.a),rr.find(r=>r.id===d.b)))throw Error('Przejście w pliku JSON nie łączy sąsiadujących pokojów.');
  const vv=(Array.isArray(doc.vents)?doc.vents:[]);if(vv.length>80)throw Error('Maksymalnie 80 kratek wentylacyjnych.');const importVents=vv.map(v=>{const r=rr.find(r=>r.id===String(v.roomId));if(!r)throw Error('Kratka wentylacyjna wskazuje nieistniejący pokój.');const type=v.type==='exhaust'?'exhaust':v.type==='supply'?'supply':null;if(!type)throw Error('Nieprawidłowy typ kratki wentylacyjnej.');return{id:uid(),roomId:r.id,type,rate:num(v.rate,0,0,600),x:cm(num(v.x,r.w*.5,.05,Math.max(.05,r.w-.05))),y:cm(num(v.y,r.h*.5,.05,Math.max(.05,r.h-.05)))}});

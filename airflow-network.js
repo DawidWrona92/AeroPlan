@@ -7,7 +7,7 @@
  const bounded=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
  const sign=x=>x<0?-1:1;
  function powerFlow(dp,coefficient,exponent,limit=Infinity){
-  if(!coefficient||!Number.isFinite(dp))return 0;
+  if(!coefficient||limit===0||!Number.isFinite(dp))return 0;
   const magnitude=coefficient*(Math.pow(Math.abs(dp)+EPS,exponent)-Math.pow(EPS,exponent));
   return sign(dp)*(Number.isFinite(limit)&&limit>0?limit*Math.tanh(Math.max(0,magnitude)/limit):Math.max(0,magnitude));
  }
@@ -33,7 +33,7 @@
    const exponent=w.state==='closed'?.67:.5;
    const extPressure=windPa*cp(w.side,angle);
    external.push({id:w.id,kind:'window',index:i,room:w.roomIndex,base,exponent,extPressure,
-    limit:w.maxQ||Infinity,penetration:w.penetration??1});
+    limit:w.state==='closed'?Infinity:(w.maxQ??Infinity),penetration:w.penetration??1});
   });
   // Background envelope leakage is pressure driven; unmeasured two-way air exchange is separate.
   rooms.forEach((room,i)=>{
@@ -64,7 +64,7 @@
     const dp=link.extPressure-pressures[link.room],q=flowExternal(link,pressures[link.room]);
     residual[link.room]+=q;
     if(diag){const frac=Number.isFinite(link.limit)&&link.limit>0?q/link.limit:0;
-     const derivative=link.base*link.exponent*Math.pow(Math.abs(dp)+EPS,link.exponent-1)*(1-Math.min(.99999999,frac*frac));
+     const derivative=link.limit===0?0:link.base*link.exponent*Math.pow(Math.abs(dp)+EPS,link.exponent-1)*(1-Math.min(.99999999,frac*frac));
      diag[link.room][link.room]+=derivative;
     }
    }
