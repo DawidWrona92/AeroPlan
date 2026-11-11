@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AeroPlan 2.10 – przepływ powietrza i ciśnienie</title>
+<title>AeroPlan 2.11 – przepływ powietrza i ciśnienie</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
  <div class="section">
   <h2>1. Model mieszkania <small>metry / m²</small></h2>
   <div class="rowbtn"><button id="preset">Przykład · 55 m²</button><button id="newplan">Pusty plan</button></div>
-  <div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" type="number" min="2" max="6" step="0.1" value="2.6"></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" type="number" min="0.002" max="0.15" step="0.005" value="0.025"></div></div>
+  <div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" type="number" min="2" max="6" step="0.1" value="2.6"></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" type="number" min="0" max="0.15" step="0.005" value="0.025"></div></div>
   <p class="hint">Pomieszczenia możesz narysować myszką na planie (narzędzie „Rysuj pokój”) albo ustawić ich wymiary i współrzędne poniżej. Pokoje nie mogą się nakładać.</p>
   <div id="rooms"></div><button id="addRoom" class="smallbtn">+ Dodaj pomieszczenie</button>
  </div>
@@ -127,7 +127,7 @@
   <section class="datacard"><h3>Stężenia w pomieszczeniach</h3><p>Aktualne średnie PM₂.₅ w µg/m³ — te same wartości wyświetlają się na planie przy nazwach pomieszczeń.</p><table class="roomsdata"><thead><tr><th>Pomieszczenie</th><th>m²</th><th>Średnie PM₂.₅</th><th>P90</th></tr></thead><tbody id="roomStats"></tbody></table></section>
   <section class="datacard"><h3>Porównanie lokalizacji oczyszczacza</h3><p>Porównaj 30-minutową ekspozycję przy ostatnich obliczonych warunkach wiatru. Podmuchy są w rankingu zamrożone; porównuj także przy różnych ustawieniach wiatru.</p><div class="field" style="margin:10px 0 11px"><label for="targetRoom">Co optymalizować?</label><select id="targetRoom"><option value="all">Średnie stężenie w całym mieszkaniu</option></select></div><button id="compare" class="primary">Porównaj lokalizacje</button><div id="compareStatus" class="comparison-meta">Wyniki zależą od aktualnego układu ścian, emisji i CADR.</div><div class="progress"><div id="compareProgress"></div></div><div id="ranking"></div></section>
  </div>
- <section class="datacard" style="margin-top:16px"><details><summary>Model 2.9 — fizyka i ograniczenia</summary>
+ <section class="datacard" style="margin-top:16px"><details><summary>Model AeroPlan — fizyka i ograniczenia</summary>
  <p><strong>Ciśnienia:</strong> każde pomieszczenie jest węzłem sieci ciśnień. Połączenia opisują równania nieszczelności Q ∼ (Δp)^0,65 i otworów Q = C<sub>d</sub> A√(2|Δp|/ρ). Solver szuka ciśnień, przy których dopływ i odpływ każdego pokoju się równoważą. Wiatr nadaje różne ciśnienia fasadom.</p>
  <p><strong>Przepływ przestrzenny:</strong> uproszczony solwer 2D na siatce z projekcją ciśnienia rozprowadza źródła i ujścia w pokojach. Porywy wiatru przeliczane okresowo. Kratki nawiewu/wywiewu są modelowane w środku pokoju, bez geometrii kanałów.</p>
  <p><strong>PM₂.₅:</strong> zachowawczy transport między sąsiednimi komórkami z dyfuzją, lokalnymi źródłami, filtracją i napływem z zewnątrz. P90 oznacza stężenie w 90. percentylu komórek pokoju — jest pomocniczym wskaźnikiem hot-spotów, a nie pomiarem.</p>
