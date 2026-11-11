@@ -1,61 +1,63 @@
-# AeroPlan
+# AeroPlan 2.6
 
-**AeroPlan 2.5** to lokalna aplikacja przeglądarkowa do szkicowania układu mieszkania oraz **porównywania ustawień oczyszczacza powietrza** na podstawie uproszczonego modelu 2D transportu PM₂.₅.
+AeroPlan to interaktywna aplikacja w HTML, CSS i JavaScript do szkicowania mieszkania oraz **orientacyjnego** porównywania ustawień oczyszczacza powietrza. Oblicza i wizualizuje transport PM₂.₅ w uproszczonym modelu 2D.
 
-> **To nie jest pełne CFD ani pomiar jakości powietrza.** Wyniki mają charakter orientacyjny i służą do zestawiania scenariuszy, nie do certyfikowania skuteczności urządzenia ani wyznaczania rzeczywistego rozkładu stężeń.
+> **Nie jest to pełny symulator CFD 3D, pomiar jakości powietrza ani narzędzie do wyznaczania narażenia zdrowotnego.** Wyniki porównują scenariusze i wymagają weryfikacji pomiarami.
 
 ## Uruchomienie
 
-1. Sklonuj repozytorium lub pobierz pliki `index.html`, `styles.css` i `app.js` do **jednego folderu**.
-2. Otwórz `index.html` w aktualnej wersji przeglądarki (Chrome, Edge lub Firefox).
-3. Opcjonalnie uruchom prosty lokalny serwer: `python -m http.server 8000` i przejdź na `http://localhost:8000`.
+Pobierz `index.html`, `styles.css` i `app.js` do jednego katalogu i otwórz `index.html` w aktualnej przeglądarce. Instalacja bibliotek ani dostęp do sieci nie są wymagane. Alternatywnie uruchom `python -m http.server 8000` w katalogu projektu i przejdź do `http://localhost:8000`.
 
-Nie trzeba instalować zależności JavaScript, kompilować projektu ani łączyć się z serwerem. Aplikacja działa po stronie użytkownika.
+## Co można zrobić?
 
-## Funkcje
+- Narysować, przesuwać i wymiarować pokoje (min. 0,5 × 0,5 m), w tym pokoje o niestandardowych wymiarach.
+- Dodawać drzwi, stale otwarte przejścia i okna; zmieniać stan drzwi i okien podczas symulacji.
+- Ustawiać infiltrację przez zamknięte okna, rozszczelnienie i otwarcie, różnicę ciśnień, wymianę przez pozostałą wentylację oraz rzeczywiste stężenie PM₂.₅ na zewnątrz.
+- Włączyć scenariusz **wiatru** i wybrać jego kierunek na planie: 0° z lewej na prawą, 90° z góry na dół. Model równoważy nawiew i wywiew przez okna w obrębie połączonych pokojów. Pojedyncze okno bez ujścia powietrza pozostaje przybliżoną wymianą lokalną. Wartość kierunku jest **założeniem użytkownika**, nie pomiarem.
+- Regulować CADR, kierunek wydmuchu, rozmiar i położenie oczyszczacza.
+- Odczytywać średnie PM₂.₅ w pokojach, sumę usuniętego pyłu oraz orientacyjne natężenie wymiany okiennej.
+- Uruchomić symulację bez limitu czasu albo włączyć opcjonalne ograniczenie czasu.
+- Porównać ustawienia oczyszczacza: pozycję środkową w każdym pokoju oraz aktualną pozycję użytkownika (nie jest to pełna optymalizacja ciągła).
+- Eksportować/importować plan w JSON oraz zapisywać obraz PNG.
 
-- Rysowanie, przesuwanie, zaznaczanie i usuwanie prostokątnych pokojów; dokładne wymiary w metrach.
-- Otwierane i zamykane drzwi, stale otwarte przejścia oraz okna umieszczane na ścianach zewnętrznych.
-- Regulowana szczelność okien i stany: zamknięte, rozszczelnione, otwarte.
-- Ręczne ustawienie **PM₂.₅ za oknem** (przykładowa wartość początkowa nie jest rzeczywistym pomiarem).
-- Parametry CADR oczyszczacza, średnica, kierunek i siła wydmuchu; ograniczenie pozycji do obrysu pomieszczenia.
-- Mapa stężeń, podgląd kierunków przepływu i średnie PM₂.₅ dla każdego pokoju.
-- Symulacja **bez domyślnego limitu czasu**, z możliwością ustawienia limitu.
-- Automatyczne porównywanie lokalizacji oczyszczacza na ograniczonym horyzoncie obliczeń.
-- Import i eksport projektu w JSON oraz zapis obrazu planu w PNG.
+## Naprawy w wersji 2.6
 
-## Pierwsze kroki
+- **Kolizje pokoi** są wykrywane w dokładnej geometrii prostokątów, nie tylko w komórkach siatki. Edycje prowadzące do kolizji są odrzucane z przywróceniem wcześniejszych wartości. Nieprawidłowy import JSON nie zastępuje prawidłowego planu.
+- **Okna** nie mogą nachodzić na siebie. Edycja wymiarów i położenia jest walidowana. Okno zachowuje zadaną szerokość przy krańcu ściany poprzez przesunięcie środka, a nie ucięcie połowy okna.
+- **Wąskie drzwi i przejścia** są modelowane za pomocą ułamkowej przepuszczalności krawędzi siatki, zamiast jedynie próbkowania pojedynczych punktów.
+- **Zmiana drzwi w panelu** przebudowuje połączenia, zachowując czas i bieżące stężenia; tak jak kliknięcie drzwi na planie.
+- **Małe pomieszczenia** mają objętości komórek przeskalowane do dokładnej kubatury pokoju. Transport między komórkami używa tych objętości, aby zachowywać bilans masy. Pozostaje błąd geometryczny przybliżenia kształtu komórek i lokalnego pola prędkości przy granicach ścian.
+- **Okna a przepływ**: dla dwóch lub więcej otworów nawiewnych/wywiewnych w tej samej połączonej strefie można włączyć szacowany przepływ wywołany kierunkiem wiatru. Pole prędkości i transport PM₂.₅ korzystają ze wspólnie bilansowanych strumieni. Pozostała wymiana powietrza jest reprezentowana jako wymiana lokalna.
+- Dodano automatyczne testy regresyjne i GitHub Actions.
 
-1. Kliknij **Pusty plan** albo skorzystaj z przykładu mieszkania.
-2. Narysuj pokoje myszką; przesuń je i skoryguj wymiary w panelu.
-3. Dodaj drzwi, stałe otwory oraz okna.
-4. Ustaw parametry wentylacji, emisji i **rzeczywiste PM₂.₅ na zewnątrz**.
-5. Ustaw oczyszczacz, wybierz **Start**, porównuj wyniki w pomieszczeniach.
-6. Zapisz projekt jako JSON, aby wrócić do niego później.
+## Ograniczenia modelu
 
-## Założenia i ograniczenia
+- To pole 2D uśrednione po wysokości, bez obliczania turbulencji 3D, wpływu mebli, temperatury, konwekcji czy rzeczywistej charakterystyki wentylatora.
+- Różnica ciśnień i kierunek wiatru są parametrami scenariusza. **Nie rozwiązujemy rzeczywistego układu ciśnień budynku ani pełnych warunków brzegowych.** Model nie symuluje przeciągu wynikającego z pojedynczego otwartego okna, gdy brak ujścia w tej samej strefie.
+- Parametr ACH dla pozostałej wentylacji jest przybliżoną wymianą stężenia, a nie dokładnym obliczeniem strumienia na rzeczywistych kratkach i nawiewnikach.
+- Komórki siatki mają zastępcze objętości zachowujące objętości pokojów; nie jest to adaptacyjny solwer na pełnych komórkach częściowych. Wąskie wnęki i elementy mniejsze od siatki nadal mogą być nieprawidłowo odwzorowane.
+- Wartość PM₂.₅ na zewnątrz wprowadzana jest ręcznie. Domyślna wartość jest przykładowa, nie jest bieżącym odczytem z czujnika.
+- Rankingi i lokalne stężenia **nie powinny być interpretowane jako wyniki zweryfikowanej symulacji CFD** ani jako pomiar rzeczywistej skuteczności oczyszczacza.
 
-- Obliczenia są dwuwymiarowe, uśrednione po wysokości pomieszczeń.
-- Przepływ przez okna i pozostałą wentylację jest przybliżony; nie ma pełnego modelu różnic ciśnień ani lokalnych strug wiatru.
-- Model nie odtwarza wiernie turbulencji 3D, mebli, konwekcji termicznej, wymuszeń od grzejników i klimatyzacji czy rzeczywistych charakterystyk wentylatorów.
-- Klasy szczelności okien i parametry przepuszczalności są założeniami modelu, a nie zmierzonymi parametrami konkretnego okna.
-- Rzeczywista skuteczność oczyszczania zależy również od położenia urządzenia, przeszkód, wentylacji i eksploatacji filtrów.
-- Stężenie na zewnątrz **nie jest pobierane automatycznie**; wpisz odczyt z czujnika lub monitoringu.
-- Nie traktuj symulacji jako podstawy decyzji wymagających dokładnych badań środowiskowych.
+## Testy dla programistów
 
-## Pliki
+Wymagany Python 3.12+ z Playwright i Chromium. Samo uruchomienie aplikacji nie wymaga Pythona ani zależności.
 
-| Plik | Zawartość |
-|---|---|
-| `index.html` | Interfejs aplikacji |
-| `styles.css` | Styl i układ graficzny |
-| `app.js` | Edytor planu, model symulacji, obliczenia, wizualizacja i zapis |
-| `README.md` | Instrukcja i ograniczenia |
+```bash
+node --check app.js
+python -m pip install playwright==1.57.0
+python -m playwright install chromium
+python -m unittest discover -s tests -v
+```
 
-## Wersja
+W CI GitHub Actions instalowana jest przeglądarka i uruchamiane są scenariusze regresji. W lokalnym systemie Linux z Chromium w systemie można wskazać `AEROPLAN_CHROMIUM=/usr/bin/chromium`.
 
-**2.5** — domyślnie nieograniczony czas symulacji; pozostałe funkcje obejmują poprawki edytora do wersji 2.4, ustawienia okien i przejść oraz mapę średnich stężeń. Wersje historyczne były dostarczane jako oddzielne paczki; w repozytorium znajduje się **aktualny kod źródłowy**.
+## Organizacja plików
 
-## Uwaga dotycząca licencji
+- `index.html` — interfejs
+- `styles.css` — style
+- `app.js` — edytor, model i renderowanie
+- `tests/test_regressions.py` — testy integracyjne i numeryczne
+- `.github/workflows/ci.yml` — automatyczna kontrola składni i testy
 
-W repozytorium nie określono jeszcze licencji na wykorzystanie i redystrybucję kodu.
+Kod modelu znajduje się nadal w jednym pliku `app.js`; docelowy podział na moduły geometrii, solvera, UI i obsługi plików jest osobnym, większym zadaniem refaktoryzacyjnym.
