@@ -1,155 +1,126 @@
 <!doctype html>
+
 <html lang="pl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AeroPlan 2.12 – przepływ powietrza i ciśnienie</title>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>AeroPlan UI Lab – eksperymentalny interfejs</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="layout">
-<aside class="sidebar">
- <div class="brand">Aero<em>Plan</em> <span style="font-size:11px;color:#88a0b8;font-weight:500">2D · LAB</span></div>
- <div class="subbrand">Interaktywny model transportu PM₂.₅ w mieszkaniu</div>
- <div class="section">
-  <h2>1. Model mieszkania <small>metry / m²</small></h2>
-  <div class="rowbtn"><button id="preset">Przykład · 55 m²</button><button id="newplan">Pusty plan</button></div>
-  <div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" type="number" min="2" max="6" step="0.1" value="2.6"></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" type="number" min="0" max="0.15" step="0.005" value="0.025"></div></div>
-  <p class="hint">Pomieszczenia możesz narysować myszką na planie (narzędzie „Rysuj pokój”) albo ustawić ich wymiary i współrzędne poniżej. Pokoje nie mogą się nakładać.</p>
-  <div id="rooms"></div><button id="addRoom" class="smallbtn">+ Dodaj pomieszczenie</button>
- </div>
- <div class="section">
-  <h2>2. Drzwi i stałe otwory <small>przejścia między pokojami</small></h2>
-  <div id="doors"></div><div class="rowbtn"><button id="addDoor" class="smallbtn">+ Dodaj drzwi</button><button id="addOpening" class="smallbtn">+ Stały otwór</button></div>
-  <p class="hint">Zamknięte drzwi również przepuszczają powietrze przez regulowaną szczelinę pod skrzydłem i nieszczelność przy ościeżnicy. Wartość 10 mm jest przykładowa. Drzwi można przełączać podczas symulacji. Aby je przesunąć wzdłuż wspólnej ściany, użyj narzędzia „Przesuń element” i przeciągnij drzwi; możesz też edytować „Pozycja [%]”. Stały otwór nie ma skrzydła.</p>
- </div>
- <div class="section">
-  <h2>3. Okna <small>tylko ściany zewnętrzne</small></h2>
-  <div id="windows"></div>
-  <button id="addWindow" class="smallbtn">+ Dodaj okno na ścianie zewnętrznej</button>
-  <p class="hint">Na rysunku wybierz „Okno”, najedź na konkretną ścianę zewnętrzną i kliknij zielony podgląd. Nie przeskakuje ono na inne ściany. Parametry szczelności każdego okna można zmieniać osobno. Klasa 4: do 3; klasa 3: do 9 m³/(h·m²) przy 100 Pa — są to wartości graniczne klasy, nie typowy pomiar.</p>
- </div>
- <div class="section">
-  <h2>4. Nawiewniki i wywiewniki <small>kratki wentylacyjne</small></h2>
-  <div id="vents"></div>
-  <div class="rowbtn"><button id="addSupply" class="smallbtn" type="button">+ Nawiew</button><button id="addExhaust" class="smallbtn" type="button">+ Wywiew</button></div>
-  <p class="hint">Każda kratka ma indywidualną wydajność [m³/h] i pozycję. Kliknij wewnątrz pokoju, by ją dodać; przeciągnij narzędziem „Przesuń element”. Nawiew ≠ źródło pyłu: wyższe PM₂.₅ w przykładowej kuchni wynika z <strong>emisji podczas gotowania</strong> (1350 µg/h). Pokazana tam kratka wywiewna 30 m³/h jest wyłącznie przykładem — wpisz rzeczywisty przepływ.</p>
- </div>
- <div class="section">
-  <h2>5. Powietrze i emisja</h2>
-  <div class="fieldgrid">
-   <div class="field"><label for="initial">Początkowe PM₂.₅ [µg/m³]</label><input id="initial" type="number" min="0" max="1000" step="1" value="48"></div>
-   <div class="field"><label for="outside">PM₂.₅ ZA OKNEM [µg/m³] · wpisz swój pomiar</label><input id="outside" type="number" min="0" max="1000" step="0.1" value="24" aria-describedby="outsideHint"></div>
-   <div class="field"><label for="ach">Referencyjna nieszczelność obudowy (przy 4 Pa) [1/h]</label><input id="ach" type="number" min="0" max="5" step="0.05" value="0.1"></div>
-   <div class="field"><label for="deposition">Osadzanie cząstek [1/h]</label><input id="deposition" type="number" min="0" max="3" step="0.05" value="0.08"></div>
-  </div>
-  <div class="fieldgrid spaced">
-    <div class="field"><label for="deltaP">Δp do wymiany dwustronnej [Pa]</label><input id="deltaP" type="number" min="0" max="100" step="0.5" value="4"></div>
-    <div class="field"><label for="windFlowEnabled"><input id="windFlowEnabled" type="checkbox" checked> Szacowany przepływ wywołany wiatrem (scenariusz)</label></div>
-    <div class="field"><label for="windDirection">Kierunek wiatru: 0° →, 90° ↓ [°]</label><input id="windDirection" type="number" min="0" max="360" step="5" value="0"></div>
-    <div class="field"><label for="windSpeed">Prędkość wiatru przy budynku [m/s]</label><input id="windSpeed" type="number" min="0" max="20" step="0.5" value="2.5"></div>
-    <div class="field"><label for="gustPercent">Siła porywów [% prędkości]</label><input id="gustPercent" type="number" min="0" max="90" step="5" value="15"></div>
-    <div class="field"><label for="gustPeriod">Okres zmienności podmuchów [s symulacji]</label><input id="gustPeriod" type="number" min="30" max="3600" step="30" value="180"></div>
-    <div class="field"><label for="gridStep">Rozmiar komórki PM₂.₅ [m]</label><select id="gridStep"><option value="0.3">0,30 — szybciej</option><option value="0.2" selected>0,20 — standard</option><option value="0.15">0,15 — szczegółowo</option></select></div>
-    <div class="field"><label for="pmPenetration">Przenikanie PM przez zamknięte okno [0–1]</label><input id="pmPenetration" type="number" min="0" max="1" step="0.05" value="0.8"></div>
-    <div class="field"><label for="maxWindowAch">Limit wymiany na otwarte okno [1/h pokoju]</label><input id="maxWindowAch" type="number" min="0" max="30" step="0.5" value="12"></div>
-  </div>
-  <p class="hint" id="outsideHint"><strong>24 µg/m³ to wyłącznie przykład, nie aktualny pomiar.</strong> Podaj rzeczywiste stężenie z czujnika PM₂.₅ lub lokalnego monitoringu. Wartość za oknem zostaje użyta przy napływie przez okna i pozostałej wentylacji — nie jest losowana.</p>
-  <p class="hint">Nawiew i wywiew [m³/h] dodasz jako osobne kratki w sekcji 4 lub klikając na rzucie. Solver rozwiązuje bilans przepływów przez okna, drzwi, nawiewy i wywiewy, a nieszczelności obudowy są traktowane jako opory zależne od ciśnienia. Parametry wiatru i otwarcia pozostają przybliżeniami. Rozmiar komórki jest ograniczany automatycznie dla bardzo dużych planów.</p>
-  <p class="hint">Współczynnik ACH służy tutaj wyłącznie jako miara przepuszczalności nieszczelności przy 4 Pa, a nie gwarantowana wymiana powietrza. Wentylacja ogólna obejmuje pozostałe nieszczelności — <strong>nie licz w niej ponownie okien</strong>. Przy włączonym szacowanym przepływie okiennym model bilansuje nawiew i wywiew w połączonych pokojach zgodnie z umownym kierunkiem wiatru. Dwustronne mieszanie pozostaje jedynie przy oknach bez przepływu netto; jest przybliżeniem. To model scenariuszowy bez pomiaru rzeczywistego ciśnienia ani wiatru.</p>
- </div>
- <div class="section">
-  <h2>6. Oczyszczacz</h2>
-  <div class="fieldgrid">
-   <div class="field"><label for="cadr">CADR dla PM₂.₅ [m³/h]</label><input id="cadr" type="number" min="0" max="1800" step="10" value="330"></div>
-   <div class="field"><label for="purifierDiameter">Średnica oczyszczacza na planie [m]</label><input id="purifierDiameter" type="number" min="0.20" max="1.20" step="0.01" value="0.42"></div>
-   <div class="field"><label for="jet">Siła wydmuchu · model [m/s]</label><input id="jet" type="number" min="0" max="2" step="0.1" value="0.8"></div>
-   <div class="field"><label for="orientation">Kierunek wydmuchu</label><select id="orientation"><option value="0">→ Wschód</option><option value="90">↓ Południe</option><option value="180">← Zachód</option><option value="270">↑ Północ</option></select></div>
-   <div class="field full simulation-time-settings">
-    <label class="time-limit-toggle" for="timeLimitEnabled"><input id="timeLimitEnabled" type="checkbox"> Zatrzymaj symulację po określonym czasie</label>
-    <div class="time-limit-value"><label for="maxMinutes">Limit czasu [min]</label><input id="maxMinutes" type="number" min="1" max="525600" step="1" value="60" disabled></div>
-    <p class="hint">Domyślnie <strong>bez limitu</strong> — symulacja trwa, dopóki jej nie zatrzymasz. Limit jest opcjonalny i możesz go zmienić podczas działania bez utraty wyników.</p>
-   </div>
-  </div>
-  <p class="hint">Kliknij na planie, by przenieść oczyszczacz. Możesz też go przeciągnąć. <strong>Cały okrąg urządzenia</strong> pozostanie w obrębie jednego pokoju, z uwzględnieniem zadanej średnicy. CADR decyduje o usuwaniu pyłu, a wydmuch o modelowanym ruchu powietrza.</p>
- </div>
- <div class="section">
-  <h2>7. Zapis i odczyt</h2>
-  <div class="local-projects" aria-label="Projekty zapisane w przeglądarce">
-   <div class="field"><label for="projectName">Nazwa projektu (np. Moje mieszkanie – oczyszczacz A)</label><input id="projectName" type="text" maxlength="60" value="Moje mieszkanie" placeholder="Nazwa projektu"></div>
-   <div class="rowbtn"><button id="saveLocal" class="primary" type="button">Zapisz projekt</button><button id="loadLocal" type="button">Wczytaj wybrany</button></div>
-   <div class="field"><label for="savedProjects">Zapisane projekty</label><select id="savedProjects"><option value="">Brak zapisanych projektów</option></select></div>
-   <div class="rowbtn"><button id="deleteLocal" class="smallbtn" type="button">Usuń wybrany zapis</button></div>
-   <p id="localSaveInfo" class="hint" role="status" aria-live="polite">Ostatnia konfiguracja jest zapisywana automatycznie w tej przeglądarce.</p>
-  </div>
-  <div class="rowbtn"><button id="saveJson" class="smallbtn">Eksportuj JSON</button><button id="loadJson" class="smallbtn">Importuj JSON</button></div>
-  <input style="display:none" type="file" id="jsonFile" accept="application/json,.json">
-  <p class="hint">Eksport/import JSON to przenośna kopia zapasowa wszystkich ustawień: pokoje, okna, drzwi, wentylacja, oczyszczacz i parametry symulacji. Zapis w przeglądarce jest lokalny dla danej przeglądarki i adresu pliku/strony; może zniknąć po czyszczeniu danych lub zmianie lokalizacji pliku. Zalecamy regularnie eksportować JSON. Nie zapisujemy przebiegu czasowego symulacji.</p>
- </div>
-</aside>
+<header class="app-topbar"><div class="app-identity"><div class="brand">Aero<em>Plan</em> <span style="font-size:11px;color:#88a0b8;font-weight:500">UI LAB · EKSPERYMENT</span></div><div class="app-subtitle">Porównuj ustawienia oczyszczacza w swoim mieszkaniu</div></div><div class="app-project-box"><div class="app-project-heading"><span class="app-eyebrow">BIEŻĄCY PROJEKT</span><p aria-live="polite" class="app-save-info hint" id="localSaveInfo" role="status">Ostatnia konfiguracja jest zapisywana automatycznie w tej przeglądarce.</p></div><div class="app-project-controls"><label class="visually-hidden" for="projectName">Nazwa aktualnego projektu</label><input id="projectName" maxlength="60" placeholder="Nazwa projektu, np. Moje mieszkanie" type="text" value="Moje mieszkanie"/><button class="primary" id="saveLocal" title="Zapisz bieżący układ, wentylację i parametry oczyszczacza w przeglądarce" type="button">Zapisz projekt</button><label class="visually-hidden" for="savedProjects">Wybierz zapisany projekt</label><select id="savedProjects"><option value="">Brak zapisanych projektów</option></select><button id="loadLocal" title="Wczytaj wybrany projekt z listy" type="button">Wczytaj</button></div></div></header><div class="layout">
+<aside class="sidebar"><p class="sidebar-eyebrow">KONFIGURACJA</p><h2 class="sidebar-title">Ustawienia mieszkania</h2><p class="sidebar-subtitle">Wybierz obszar do edycji. Plan i wyniki pozostają zawsze widoczne.</p><div aria-label="Ustawienia AeroPlan" class="config-tabs" role="tablist"><button aria-controls="pane-plan" aria-selected="true" class="config-tab" data-config-tab="plan" id="nav-plan" role="tab" tabindex="0" type="button"><strong>Plan</strong><span>Pokoje, drzwi, okna</span></button><button aria-controls="pane-air" aria-selected="false" class="config-tab" data-config-tab="air" id="nav-air" role="tab" tabindex="-1" type="button"><strong>Powietrze</strong><span>Wiatr i wentylacja</span></button><button aria-controls="pane-purifier" aria-selected="false" class="config-tab" data-config-tab="purifier" id="nav-purifier" role="tab" tabindex="-1" type="button"><strong>Oczyszczacz</strong><span>CADR i wydmuch</span></button><button aria-controls="pane-projects" aria-selected="false" class="config-tab" data-config-tab="projects" id="nav-projects" role="tab" tabindex="-1" type="button"><strong>Projekty</strong><span>Kopie i import</span></button></div><div aria-labelledby="nav-plan" class="config-pane" id="pane-plan" role="tabpanel"><div class="section">
+<h2>Pokoje i wymiary</h2>
+<div class="rowbtn"><button id="preset">Przykład · 55 m²</button><button id="newplan">Pusty plan</button></div>
+<div class="fieldgrid spaced"><div class="field"><label for="height">Wysokość pomieszczeń [m]</label><input id="height" max="6" min="2" step="0.1" type="number" value="2.6"/></div><div class="field"><label for="mixing">Mieszanie turbulentne [m²/s]</label><input id="mixing" max="0.15" min="0" step="0.005" type="number" value="0.025"/></div></div>
+<p class="hint">Pomieszczenia możesz narysować myszką na planie (narzędzie „Rysuj pokój”) albo ustawić ich wymiary i współrzędne poniżej. Pokoje nie mogą się nakładać.</p>
+<div id="rooms"></div><button class="smallbtn" id="addRoom">+ Dodaj pomieszczenie</button>
+</div><div class="section">
+<h2>Drzwi i przejścia</h2>
+<div id="doors"></div><div class="rowbtn"><button class="smallbtn" id="addDoor">+ Dodaj drzwi</button><button class="smallbtn" id="addOpening">+ Stały otwór</button></div>
+<p class="hint">Zamknięte drzwi również przepuszczają powietrze przez regulowaną szczelinę pod skrzydłem i nieszczelność przy ościeżnicy. Wartość 10 mm jest przykładowa. Drzwi można przełączać podczas symulacji. Aby je przesunąć wzdłuż wspólnej ściany, użyj narzędzia „Przesuń element” i przeciągnij drzwi; możesz też edytować „Pozycja [%]”. Stały otwór nie ma skrzydła.</p>
+</div><div class="section">
+<h2>Okna</h2>
+<div id="windows"></div>
+<button class="smallbtn" id="addWindow">+ Dodaj okno na ścianie zewnętrznej</button>
+<p class="hint">Na rysunku wybierz „Okno”, najedź na konkretną ścianę zewnętrzną i kliknij zielony podgląd. Nie przeskakuje ono na inne ściany. Parametry szczelności każdego okna można zmieniać osobno. Klasa 4: do 3; klasa 3: do 9 m³/(h·m²) przy 100 Pa — są to wartości graniczne klasy, nie typowy pomiar.</p>
+</div></div><div aria-labelledby="nav-air" class="config-pane" hidden="" id="pane-air" role="tabpanel"><div class="section">
+<h2>Kratki wentylacyjne</h2>
+<div id="vents"></div>
+<div class="rowbtn"><button class="smallbtn" id="addSupply" type="button">+ Nawiew</button><button class="smallbtn" id="addExhaust" type="button">+ Wywiew</button></div>
+<p class="hint">Każda kratka ma indywidualną wydajność [m³/h] i pozycję. Kliknij wewnątrz pokoju, by ją dodać; przeciągnij narzędziem „Przesuń element”. Nawiew ≠ źródło pyłu: wyższe PM₂.₅ w przykładowej kuchni wynika z <strong>emisji podczas gotowania</strong> (1350 µg/h). Pokazana tam kratka wywiewna 30 m³/h jest wyłącznie przykładem — wpisz rzeczywisty przepływ.</p>
+</div><div class="section">
+<h2>Warunki powietrza</h2>
+<div class="fieldgrid">
+<div class="field"><label for="initial">Początkowe PM₂.₅ [µg/m³]</label><input id="initial" max="1000" min="0" step="1" type="number" value="48"/></div>
+<div class="field"><label for="outside">PM₂.₅ ZA OKNEM [µg/m³] · wpisz swój pomiar</label><input aria-describedby="outsideHint" id="outside" max="1000" min="0" step="0.1" type="number" value="24"/></div>
+<div class="field"><label for="ach">Referencyjna nieszczelność obudowy (przy 4 Pa) [1/h]</label><input id="ach" max="5" min="0" step="0.05" type="number" value="0.1"/></div>
+<div class="field"><label for="deposition">Osadzanie cząstek [1/h]</label><input id="deposition" max="3" min="0" step="0.05" type="number" value="0.08"/></div>
+</div>
+<div class="fieldgrid spaced">
+<div class="field"><label for="deltaP">Δp do wymiany dwustronnej [Pa]</label><input id="deltaP" max="100" min="0" step="0.5" type="number" value="4"/></div>
+<div class="field"><label for="windFlowEnabled"><input checked="" id="windFlowEnabled" type="checkbox"/> Szacowany przepływ wywołany wiatrem (scenariusz)</label></div>
+<div class="field"><label for="windDirection">Kierunek wiatru: 0° →, 90° ↓ [°]</label><input id="windDirection" max="360" min="0" step="5" type="number" value="0"/></div>
+<div class="field"><label for="windSpeed">Prędkość wiatru przy budynku [m/s]</label><input id="windSpeed" max="20" min="0" step="0.5" type="number" value="2.5"/></div>
+<div class="field"><label for="gustPercent">Siła porywów [% prędkości]</label><input id="gustPercent" max="90" min="0" step="5" type="number" value="15"/></div>
+<div class="field"><label for="gustPeriod">Okres zmienności podmuchów [s symulacji]</label><input id="gustPeriod" max="3600" min="30" step="30" type="number" value="180"/></div>
+<div class="field"><label for="gridStep">Rozmiar komórki PM₂.₅ [m]</label><select id="gridStep"><option value="0.3">0,30 — szybciej</option><option selected="" value="0.2">0,20 — standard</option><option value="0.15">0,15 — szczegółowo</option></select></div>
+<div class="field"><label for="pmPenetration">Przenikanie PM przez zamknięte okno [0–1]</label><input id="pmPenetration" max="1" min="0" step="0.05" type="number" value="0.8"/></div>
+<div class="field"><label for="maxWindowAch">Limit wymiany na otwarte okno [1/h pokoju]</label><input id="maxWindowAch" max="30" min="0" step="0.5" type="number" value="12"/></div>
+</div>
+<p class="hint" id="outsideHint"><strong>24 µg/m³ to wyłącznie przykład, nie aktualny pomiar.</strong> Podaj rzeczywiste stężenie z czujnika PM₂.₅ lub lokalnego monitoringu. Wartość za oknem zostaje użyta przy napływie przez okna i pozostałej wentylacji — nie jest losowana.</p>
+<p class="hint">Nawiew i wywiew [m³/h] dodasz jako osobne kratki w sekcji 4 lub klikając na rzucie. Solver rozwiązuje bilans przepływów przez okna, drzwi, nawiewy i wywiewy, a nieszczelności obudowy są traktowane jako opory zależne od ciśnienia. Parametry wiatru i otwarcia pozostają przybliżeniami. Rozmiar komórki jest ograniczany automatycznie dla bardzo dużych planów.</p>
+<p class="hint">Współczynnik ACH służy tutaj wyłącznie jako miara przepuszczalności nieszczelności przy 4 Pa, a nie gwarantowana wymiana powietrza. Wentylacja ogólna obejmuje pozostałe nieszczelności — <strong>nie licz w niej ponownie okien</strong>. Przy włączonym szacowanym przepływie okiennym model bilansuje nawiew i wywiew w połączonych pokojach zgodnie z umownym kierunkiem wiatru. Dwustronne mieszanie pozostaje jedynie przy oknach bez przepływu netto; jest przybliżeniem. To model scenariuszowy bez pomiaru rzeczywistego ciśnienia ani wiatru.</p>
+</div></div><div aria-labelledby="nav-purifier" class="config-pane" hidden="" id="pane-purifier" role="tabpanel"><div class="section">
+<h2>Parametry oczyszczacza</h2>
+<div class="fieldgrid">
+<div class="field"><label for="cadr">CADR dla PM₂.₅ [m³/h]</label><input id="cadr" max="1800" min="0" step="10" type="number" value="330"/></div>
+<div class="field"><label for="purifierDiameter">Średnica oczyszczacza na planie [m]</label><input id="purifierDiameter" max="1.20" min="0.20" step="0.01" type="number" value="0.42"/></div>
+<div class="field"><label for="jet">Siła wydmuchu · model [m/s]</label><input id="jet" max="2" min="0" step="0.1" type="number" value="0.8"/></div>
+<div class="field"><label for="orientation">Kierunek wydmuchu</label><select id="orientation"><option value="0">→ Wschód</option><option value="90">↓ Południe</option><option value="180">← Zachód</option><option value="270">↑ Północ</option></select></div>
+<div class="field full simulation-time-settings">
+<label class="time-limit-toggle" for="timeLimitEnabled"><input id="timeLimitEnabled" type="checkbox"/> Zatrzymaj symulację po określonym czasie</label>
+<div class="time-limit-value"><label for="maxMinutes">Limit czasu [min]</label><input disabled="" id="maxMinutes" max="525600" min="1" step="1" type="number" value="60"/></div>
+<p class="hint">Domyślnie <strong>bez limitu</strong> — symulacja trwa, dopóki jej nie zatrzymasz. Limit jest opcjonalny i możesz go zmienić podczas działania bez utraty wyników.</p>
+</div>
+</div>
+<p class="hint">Kliknij na planie, by przenieść oczyszczacz. Możesz też go przeciągnąć. <strong>Cały okrąg urządzenia</strong> pozostanie w obrębie jednego pokoju, z uwzględnieniem zadanej średnicy. CADR decyduje o usuwaniu pyłu, a wydmuch o modelowanym ruchu powietrza.</p>
+</div></div><div aria-labelledby="nav-projects" class="config-pane" hidden="" id="pane-projects" role="tabpanel"><div class="project-guide"><strong>Zapis na górnym pasku</strong><p>Aby zachować projekt, użyj przycisku „Zapisz projekt” na górze. Tutaj znajdziesz eksport, import i usuwanie zapisów.</p></div><div class="section">
+<h2>Kopie i import projektów</h2>
+<div aria-label="Projekty zapisane w przeglądarce" class="project-backup-actions">
+<div class="rowbtn"></div>
+<div class="rowbtn"><button class="smallbtn" id="deleteLocal" type="button">Usuń wybrany zapis</button></div>
+</div>
+<div class="rowbtn"><button class="smallbtn" id="saveJson">Eksportuj JSON</button><button class="smallbtn" id="loadJson">Importuj JSON</button></div>
+<input accept="application/json,.json" id="jsonFile" style="display:none" type="file"/>
+<p class="hint">Eksport/import JSON to przenośna kopia zapasowa wszystkich ustawień: pokoje, okna, drzwi, wentylacja, oczyszczacz i parametry symulacji. Zapis w przeglądarce jest lokalny dla danej przeglądarki i adresu pliku/strony; może zniknąć po czyszczeniu danych lub zmianie lokalizacji pliku. Zalecamy regularnie eksportować JSON. Nie zapisujemy przebiegu czasowego symulacji.</p>
+</div></div><button type="button" class="jump-to-map" id="jumpToMap">Przejdź do mapy ↓</button><p class="sidebar-footer">Wersja eksperymentalna interfejsu. Silnik obliczeń i zapis JSON pozostają bez zmian.</p></aside>
 <main class="main">
- <header class="top"><div><h1>Przepływ powietrza w mieszkaniu</h1><p>Przesuwaj oczyszczacz, obserwuj cyrkulację i szukaj najlepszej lokalizacji.</p></div><span class="pill" id="solverStatus">MODEL 2D · PRZYBLIŻENIE</span></header>
- <div class="warning"><strong>Ograniczenia fizyczne:</strong> to model dwuwymiarowy, uśredniony po wysokości: nie uwzględnia pełnej turbulencji 3D, mebli, termiki, konwekcji, rzeczywistych charakterystyk wentylatorów ani pełnej aerodynamiki wentylacji okiennej. Sieć ciśnień opisuje przepływy między pokojami i otoczeniem, ale lokalne ciśnienia fasadowe, strugi 3D i układ kanałów wentylacyjnych są przybliżone. Wprowadzane ręcznie PM₂.₅ na zewnątrz jest warunkiem brzegowym, <strong>nie automatycznym pomiarem</strong>. Przed zakupem urządzenia sprawdź kilka scenariuszy: okna zamknięte i otwarte, silny/słaby wiatr oraz różne CADR. Wyniki służą <strong>do porównania wariantów</strong>, a nie do wyznaczania dokładnych lokalnych stężeń lub certyfikowania skuteczności urządzenia.</div>
- <section class="metrics">
-  <div class="metric"><div class="k">Powierzchnia / kubatura</div><div class="v" id="areaMetric">—</div><div class="s" id="volumeMetric">—</div></div>
-  <div class="metric"><div class="k">Średnie PM₂.₅</div><div class="v" id="pmMetric">—</div><div class="s">µg/m³ · średnia objętościowa</div></div>
-  <div class="metric"><div class="k">Teoretyczne eACH</div><div class="v" id="eachMetric">—</div><div class="s">CADR / cała kubatura [1/h]</div></div>
-   <div class="metric"><div class="k">Usunięty pył przez filtr</div><div class="v" id="removedMetric">—</div><div class="s">mg · od rozpoczęcia</div></div><div class="metric"><div class="k">Napływ brutto (okna + nieszczelności + kratki)</div><div class="v" id="windowFlowMetric">—</div><div class="s">m³/h · suma dodatnich strumieni</div></div>
- <div class="metric"><div class="k">Korekta ujemnych PM (numeryka)</div><div class="v" id="clippedMetric">—</div><div class="s">mg · idealnie 0</div></div>
- <div class="metric"><div class="k">Odchyłka bilansu ciśnień</div><div class="v" id="pressureMetric">—</div><div class="s">m³/h · im bliżej 0, tym lepiej</div></div>
-  <div class="metric"><div class="k">Prędkość wiatru scenariusza</div><div class="v" id="windActualMetric">—</div><div class="s">m/s · chwilowy podmuch</div></div>
- </section>
- <div class="outdoor-control" aria-label="Rzeczywiste stężenie PM₂.₅ na zewnątrz">
-   <div><strong>PM₂.₅ na zewnątrz</strong><div class="outdoor-subtitle" id="outsideSourceLabel" aria-live="polite">24 µg/m³: wartość przykładowa — wpisz rzeczywisty pomiar.</div></div>
-   <label for="outsideQuick">Pomiar [µg/m³] <input id="outsideQuick" type="number" min="0" max="1000" step="0.1" value="24"></label>
-   <div class="outdoor-flag">Napływ z okien i wentylacji</div>
- </div>
- <div class="toolbar"><button id="play" class="primary">▶ Start</button><button id="reset">↺ Reset</button><button id="screenshot">Zapisz obraz PNG</button><span class="right"><label for="speed">Tempo</label><select id="speed" style="width:125px"><option value="40">40 s / sek.</option><option value="120" selected>120 s / sek.</option><option value="300">300 s / sek.</option></select><span id="timeLimitBadge" class="time-limit-badge">Bez limitu</span><strong id="clock" style="min-width:64px">00:00</strong></span></div>
- <section class="vizcard">
-  <div class="vizhead"><div><strong id="vizTitle">Mapa stężeń PM₂.₅</strong><div class="secondary" id="caption">Komórki siatki (0,15–0,30 m). Czerwone obszary = więcej pyłu; etykieta każdego pokoju pokazuje jego aktualne średnie PM₂.₅.</div></div><div class="modebar"><button data-view="pm" class="active">PM₂.₅</button><button data-view="flow">Przepływ</button><button data-view="split">Mieszane</button></div></div>
-  <div class="editbar" role="toolbar" aria-label="Narzędzia edycji planu">
-    <button type="button" data-tool="room">▭ Rysuj pokój</button>
-    <button type="button" data-tool="move">✥ Przesuń pokój</button>
-    <button type="button" data-tool="item">⤧ Przesuń element</button>
-    <button type="button" data-tool="door">⌑ Dodaj drzwi</button>
-    <button type="button" data-tool="opening">↔ Stały otwór</button>
-    <button type="button" data-tool="window">▤ Okno</button>
-    <button type="button" data-tool="supply">↓ Nawiew</button>
-    <button type="button" data-tool="exhaust">↑ Wywiew</button>
-    <button type="button" data-tool="delete">× Usuń element</button>
-    <button type="button" data-tool="purifier" class="active">◉ Oczyszczacz / symulacja</button>
-    <label class="editor-option" for="snapToGrid"><input type="checkbox" id="snapToGrid">Skok 0,5 m</label>
-    <label class="editor-option" for="magnetWalls"><input type="checkbox" id="magnetWalls" checked>Przyciągaj do ścian</label>
-    <label for="editorSpan">Zasięg rysunku <select id="editorSpan"><option value="12">12 m</option><option value="16" selected>16 m</option><option value="24">24 m</option><option value="35">35 m</option></select></label>
-  </div>
-  <div class="selection-info" id="selectionInfo" aria-live="polite">Nie zaznaczono pokoju</div>
-  <div class="editorhelp" id="editorHelp">Oczyszczacz: kliknij lub przeciągnij w pomieszczeniu. Kliknięcie drzwi zmienia ich stan. Aby narysować dom, wybierz „Pusty plan”.</div>
-  <div class="simhelp">Podczas symulacji: <strong>kliknij drzwi, aby je otworzyć / zamknąć (zamknięte nie są idealnie szczelne)</strong>. Otwór bez skrzydła jest stale otwarty. Kliknięcie okna przełącza: zamknięte → rozszczelnione → otwarte.</div>
-  <div class="canvaswrap"><canvas id="field" width="1050" height="650" aria-label="Edytor i mapa mieszkania, przeciągaj myszką aby rysować i przesuwać pokoje" tabindex="0"></canvas></div>
-  <div class="local-probe" id="localProbe">Najedź myszką na pokój, aby odczytać lokalne PM₂.₅ (bez uśredniania).</div>
-  <div class="legend"><span id="legendMin">0 µg/m³</span><div class="gradient" id="legendGradient"></div><span id="legendMax">50 µg/m³</span><span style="margin-left:auto">Skala poglądowa · widok z góry</span></div>
- </section>
- <div class="status" id="status" role="status" style="margin-top:10px">Gotowe. Rozpocznij symulację albo przenieś oczyszczacz.</div>
- <div class="infogrid">
-  <section class="datacard"><h3>Stężenia w pomieszczeniach</h3><p>Aktualne średnie PM₂.₅ w µg/m³ — te same wartości wyświetlają się na planie przy nazwach pomieszczeń.</p><table class="roomsdata"><thead><tr><th>Pomieszczenie</th><th>m²</th><th>Średnie PM₂.₅</th><th>P90</th></tr></thead><tbody id="roomStats"></tbody></table></section>
-  <section class="datacard"><h3>Porównanie lokalizacji oczyszczacza</h3><p>Porównaj 30-minutową ekspozycję przy ostatnich obliczonych warunkach wiatru. Podmuchy są w rankingu zamrożone; porównuj także przy różnych ustawieniach wiatru.</p><div class="field" style="margin:10px 0 11px"><label for="targetRoom">Co optymalizować?</label><select id="targetRoom"><option value="all">Średnie stężenie w całym mieszkaniu</option></select></div><button id="compare" class="primary">Porównaj lokalizacje</button><div id="compareStatus" class="comparison-meta">Wyniki zależą od aktualnego układu ścian, emisji i CADR.</div><div class="progress"><div id="compareProgress"></div></div><div id="ranking"></div></section>
- </div>
- <section class="datacard" style="margin-top:16px"><details><summary>Model AeroPlan — fizyka i ograniczenia</summary>
- <p><strong>Ciśnienia:</strong> każde pomieszczenie jest węzłem sieci ciśnień. Połączenia opisują równania nieszczelności Q ∼ (Δp)^0,65 i otworów Q = C<sub>d</sub> A√(2|Δp|/ρ). Solver szuka ciśnień, przy których dopływ i odpływ każdego pokoju się równoważą. Wiatr nadaje różne ciśnienia fasadom.</p>
- <p><strong>Przepływ przestrzenny:</strong> uproszczony solwer 2D na siatce z projekcją ciśnienia rozprowadza źródła i ujścia w pokojach. Porywy wiatru przeliczane okresowo. Kratki nawiewu/wywiewu są modelowane w środku pokoju, bez geometrii kanałów.</p>
- <p><strong>PM₂.₅:</strong> zachowawczy transport między sąsiednimi komórkami z dyfuzją, lokalnymi źródłami, filtracją i napływem z zewnątrz. P90 oznacza stężenie w 90. percentylu komórek pokoju — jest pomocniczym wskaźnikiem hot-spotów, a nie pomiarem.</p>
- <p><strong>Nie jest to CFD 3D:</strong> nie rozpoznaje mebli, pionowych strug, wyporu cieplnego, precyzyjnej charakterystyki nawiewów, turbulentnych wirów ani lokalnych ciśnień na fasadzie. Współczynniki ciśnienia wiatru przyjęto orientacyjnie. Przeciągi mogą zmieniać wynik, ale jego wielkość wymaga pomiarów lub weryfikacji CFD. Najmniejsza komórka ≠ automatycznie dokładniejsze rozwiązanie.</p>
- </details></section>
- <div class="footer">Projekt demonstracyjny działa lokalnie w przeglądarce, bez serwera i bibliotek zewnętrznych. Normy szczelności: <a href="https://eli.gov.pl/api/acts/DU/2017/2285/text.html" target="_blank" rel="noopener">polskie warunki techniczne</a> oraz <a href="https://oknoplast.com.pl/leksykon/norma-pn-en-12207/" target="_blank" rel="noopener">PN-EN 12207</a>. Rzetelne zalecenia praktyczne: <a href="https://www.epa.gov/indoor-air-quality-iaq/guide-air-cleaners-home" target="_blank" rel="noopener">EPA · Guide to Air Cleaners</a> oraz <a href="https://www.canada.ca/en/health-canada/services/air-quality/indoor-contaminants/choosing-portable-purifier.html" target="_blank" rel="noopener">Health Canada</a>.</div>
+<header class="top"><div><h1>Plan mieszkania i symulacja PM₂.₅</h1><p>Edytuj układ po lewej, ustaw oczyszczacz na mapie i porównaj lokalizacje.</p></div><span class="pill" id="solverStatus">MODEL 2D · PRZYBLIŻENIE</span><div aria-label="Szybki dostęp do ustawień" class="main-shortcuts" role="group"><button class="shortcut-button" data-switch-panel="plan" type="button">Edytuj plan</button><button class="shortcut-button" data-switch-panel="purifier" type="button">Ustaw oczyszczacz</button></div></header><details class="physics-disclosure"><summary>Zakres i niepewność modelu — co oznaczają wyniki?</summary><div class="warning"><strong>Ograniczenia fizyczne:</strong> to model dwuwymiarowy, uśredniony po wysokości: nie uwzględnia pełnej turbulencji 3D, mebli, termiki, konwekcji, rzeczywistych charakterystyk wentylatorów ani pełnej aerodynamiki wentylacji okiennej. Sieć ciśnień opisuje przepływy między pokojami i otoczeniem, ale lokalne ciśnienia fasadowe, strugi 3D i układ kanałów wentylacyjnych są przybliżone. Wprowadzane ręcznie PM₂.₅ na zewnątrz jest warunkiem brzegowym, <strong>nie automatycznym pomiarem</strong>. Przed zakupem urządzenia sprawdź kilka scenariuszy: okna zamknięte i otwarte, silny/słaby wiatr oraz różne CADR. Wyniki służą <strong>do porównania wariantów</strong>, a nie do wyznaczania dokładnych lokalnych stężeń lub certyfikowania skuteczności urządzenia.</div></details>
+
+
+<div class="toolbar"><button class="primary" id="play">▶ Start</button><button id="reset">↺ Reset</button><button id="screenshot">Zapisz obraz PNG</button><span class="right"><label for="speed">Tempo</label><select id="speed" style="width:125px"><option value="40">40 s / sek.</option><option selected="" value="120">120 s / sek.</option><option value="300">300 s / sek.</option></select><span class="time-limit-badge" id="timeLimitBadge">Bez limitu</span><strong id="clock" style="min-width:64px">00:00</strong></span></div>
+<section class="vizcard">
+<div class="vizhead"><div><strong id="vizTitle">Mapa stężeń PM₂.₅</strong><div class="secondary" id="caption">Widok z góry · mapa PM₂.₅ oraz przepływu powietrza</div></div><div class="modebar"><button class="active" data-view="pm">PM₂.₅</button><button data-view="flow">Przepływ</button><button data-view="split">Mieszane</button></div></div>
+<div aria-label="Narzędzia edycji planu" class="editbar" role="toolbar"><div class="editbar-main"><span class="editbar-eyebrow">TRYB EDYCJI</span><button data-tool="room" type="button">▭ Rysuj pokój</button><button data-tool="move" type="button">✥ Przesuń pokój</button><button data-tool="item" type="button">⤧ Przesuń element</button><button class="active" data-tool="purifier" type="button">◉ Oczyszczacz / symulacja</button></div><details class="editbar-more"><summary>Dodaj lub usuń element…</summary><div class="editbar-secondary"><button data-tool="door" type="button">⌑ Dodaj drzwi</button><button data-tool="opening" type="button">↔ Stały otwór</button><button data-tool="window" type="button">▤ Okno</button><button data-tool="supply" type="button">↓ Nawiew</button><button data-tool="exhaust" type="button">↑ Wywiew</button><button data-tool="delete" type="button">× Usuń element</button></div></details><div class="editbar-options"><label class="editor-option" for="snapToGrid"><input id="snapToGrid" type="checkbox"/>Skok 0,5 m</label><label class="editor-option" for="magnetWalls"><input checked="" id="magnetWalls" type="checkbox"/>Przyciągaj do ścian</label><label for="editorSpan">Zasięg rysunku <select id="editorSpan"><option value="12">12 m</option><option selected="" value="16">16 m</option><option value="24">24 m</option><option value="35">35 m</option></select></label></div></div>
+<div aria-live="polite" class="selection-info" id="selectionInfo">Nie zaznaczono pokoju</div>
+<div class="editorhelp" id="editorHelp">Wybierz narzędzie, a następnie kliknij lub przeciągnij na planie.</div>
+<div class="simhelp">Podczas symulacji: <strong>kliknij drzwi, aby je otworzyć / zamknąć (zamknięte nie są idealnie szczelne)</strong>. Otwór bez skrzydła jest stale otwarty. Kliknięcie okna przełącza: zamknięte → rozszczelnione → otwarte.</div>
+<div class="canvaswrap"><canvas aria-label="Edytor i mapa mieszkania, przeciągaj myszką aby rysować i przesuwać pokoje" height="650" id="field" tabindex="0" width="1050"></canvas></div>
+<div class="local-probe" id="localProbe">Najedź myszką na pokój, aby odczytać lokalne PM₂.₅ (bez uśredniania).</div>
+<div class="legend"><span id="legendMin">0 µg/m³</span><div class="gradient" id="legendGradient"></div><span id="legendMax">50 µg/m³</span><span style="margin-left:auto">Skala poglądowa · widok z góry</span></div>
+</section>
+<div class="status" id="status" role="status" style="margin-top:10px">Gotowe. Rozpocznij symulację albo przenieś oczyszczacz.</div><section class="metrics metrics-primary">
+<div class="metric"><div class="k">Powierzchnia / kubatura</div><div class="v" id="areaMetric">—</div><div class="s" id="volumeMetric">—</div></div>
+<div class="metric"><div class="k">Średnie PM₂.₅</div><div class="v" id="pmMetric">—</div><div class="s">µg/m³ · średnia objętościowa</div></div>
+<div class="metric"><div class="k">Teoretyczne eACH</div><div class="v" id="eachMetric">—</div><div class="s">CADR / cała kubatura [1/h]</div></div>
+<div class="metric"><div class="k">Napływ brutto (okna + nieszczelności + kratki)</div><div class="v" id="windowFlowMetric">—</div><div class="s">m³/h · suma dodatnich strumieni</div></div>
+</section><div aria-label="Rzeczywiste stężenie PM₂.₅ na zewnątrz" class="outdoor-control">
+<div><strong>PM₂.₅ na zewnątrz</strong><div aria-live="polite" class="outdoor-subtitle" id="outsideSourceLabel">24 µg/m³: wartość przykładowa — wpisz rzeczywisty pomiar.</div></div>
+<label for="outsideQuick">Pomiar [µg/m³] <input id="outsideQuick" max="1000" min="0" step="0.1" type="number" value="24"/></label>
+<div class="outdoor-flag">Napływ z okien i wentylacji</div>
+</div>
+<div class="infogrid">
+<section class="datacard"><h3>Stężenia w pomieszczeniach</h3><p>Aktualne średnie PM₂.₅ w µg/m³ — te same wartości wyświetlają się na planie przy nazwach pomieszczeń.</p><table class="roomsdata"><thead><tr><th>Pomieszczenie</th><th>m²</th><th>Średnie PM₂.₅</th><th>P90</th></tr></thead><tbody id="roomStats"></tbody></table></section>
+<section class="datacard"><h3>Porównanie lokalizacji oczyszczacza</h3><p>Porównaj 30-minutową ekspozycję przy ostatnich obliczonych warunkach wiatru. Podmuchy są w rankingu zamrożone; porównuj także przy różnych ustawieniach wiatru.</p><div class="field" style="margin:10px 0 11px"><label for="targetRoom">Co optymalizować?</label><select id="targetRoom"><option value="all">Średnie stężenie w całym mieszkaniu</option></select></div><button class="primary" id="compare">Porównaj lokalizacje</button><div class="comparison-meta" id="compareStatus">Wyniki zależą od aktualnego układu ścian, emisji i CADR.</div><div class="progress"><div id="compareProgress"></div></div><div id="ranking"></div></section>
+</div><details class="extra-metrics"><summary>Dodatkowe parametry i diagnostyka modelu</summary><div class="metrics metrics-advanced"><div class="metric"><div class="k">Usunięty pył przez filtr</div><div class="v" id="removedMetric">—</div><div class="s">mg · od rozpoczęcia</div></div><div class="metric"><div class="k">Korekta ujemnych PM (numeryka)</div><div class="v" id="clippedMetric">—</div><div class="s">mg · idealnie 0</div></div><div class="metric"><div class="k">Odchyłka bilansu ciśnień</div><div class="v" id="pressureMetric">—</div><div class="s">m³/h · im bliżej 0, tym lepiej</div></div><div class="metric"><div class="k">Prędkość wiatru scenariusza</div><div class="v" id="windActualMetric">—</div><div class="s">m/s · chwilowy podmuch</div></div></div></details>
+<section class="datacard" style="margin-top:16px"><details><summary>Model AeroPlan — fizyka i ograniczenia</summary>
+<p><strong>Ciśnienia:</strong> każde pomieszczenie jest węzłem sieci ciśnień. Połączenia opisują równania nieszczelności Q ∼ (Δp)^0,65 i otworów Q = C<sub>d</sub> A√(2|Δp|/ρ). Solver szuka ciśnień, przy których dopływ i odpływ każdego pokoju się równoważą. Wiatr nadaje różne ciśnienia fasadom.</p>
+<p><strong>Przepływ przestrzenny:</strong> uproszczony solwer 2D na siatce z projekcją ciśnienia rozprowadza źródła i ujścia w pokojach. Porywy wiatru przeliczane okresowo. Kratki nawiewu/wywiewu są modelowane w środku pokoju, bez geometrii kanałów.</p>
+<p><strong>PM₂.₅:</strong> zachowawczy transport między sąsiednimi komórkami z dyfuzją, lokalnymi źródłami, filtracją i napływem z zewnątrz. P90 oznacza stężenie w 90. percentylu komórek pokoju — jest pomocniczym wskaźnikiem hot-spotów, a nie pomiarem.</p>
+<p><strong>Nie jest to CFD 3D:</strong> nie rozpoznaje mebli, pionowych strug, wyporu cieplnego, precyzyjnej charakterystyki nawiewów, turbulentnych wirów ani lokalnych ciśnień na fasadzie. Współczynniki ciśnienia wiatru przyjęto orientacyjnie. Przeciągi mogą zmieniać wynik, ale jego wielkość wymaga pomiarów lub weryfikacji CFD. Najmniejsza komórka ≠ automatycznie dokładniejsze rozwiązanie.</p>
+</details></section>
+<div class="footer">Projekt demonstracyjny działa lokalnie w przeglądarce, bez serwera i bibliotek zewnętrznych. Normy szczelności: <a href="https://eli.gov.pl/api/acts/DU/2017/2285/text.html" rel="noopener" target="_blank">polskie warunki techniczne</a> oraz <a href="https://oknoplast.com.pl/leksykon/norma-pn-en-12207/" rel="noopener" target="_blank">PN-EN 12207</a>. Rzetelne zalecenia praktyczne: <a href="https://www.epa.gov/indoor-air-quality-iaq/guide-air-cleaners-home" rel="noopener" target="_blank">EPA · Guide to Air Cleaners</a> oraz <a href="https://www.canada.ca/en/health-canada/services/air-quality/indoor-contaminants/choosing-portable-purifier.html" rel="noopener" target="_blank">Health Canada</a>.</div>
 </main></div>
-<div id="roomDeleteDialog" class="confirm-overlay" hidden>
- <section class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="roomDeleteTitle" aria-describedby="roomDeleteText">
-  <h2 id="roomDeleteTitle">Usunąć pokój?</h2>
-  <p id="roomDeleteText">Czy chcesz usunąć <strong id="roomDeleteName"></strong> oraz wszystkie jego przejścia, okna i kratki wentylacyjne? Tej operacji nie można cofnąć. Przed usunięciem możesz zapisać plan do JSON.</p>
-  <div class="confirm-actions"><button type="button" id="cancelRoomDelete">Anuluj</button><button type="button" id="confirmRoomDelete" class="danger-confirm">Usuń pokój</button></div>
- </section>
+<div class="confirm-overlay" hidden="" id="roomDeleteDialog">
+<section aria-describedby="roomDeleteText" aria-labelledby="roomDeleteTitle" aria-modal="true" class="confirm-card" role="dialog">
+<h2 id="roomDeleteTitle">Usunąć pokój?</h2>
+<p id="roomDeleteText">Czy chcesz usunąć <strong id="roomDeleteName"></strong> oraz wszystkie jego przejścia, okna i kratki wentylacyjne? Tej operacji nie można cofnąć. Przed usunięciem możesz zapisać plan do JSON.</p>
+<div class="confirm-actions"><button id="cancelRoomDelete" type="button">Anuluj</button><button class="danger-confirm" id="confirmRoomDelete" type="button">Usuń pokój</button></div>
+</section>
 </div>
 <script src="airflow-network.js"></script>
 <script src="app.js"></script>
-</body>
+<script src="ui-shell.js"></script></body>
 </html>
+

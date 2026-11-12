@@ -62,6 +62,9 @@ class SavedProjects(unittest.TestCase):
         return self.page.evaluate("JSON.parse(localStorage.getItem('aeroplan.projects.v1')||'[]')")
 
     def change(self,selector,value):
+        if selector.startswith('#rooms') or selector.startswith('#doors'): self.page.evaluate("window.AeroPlanUI.showPanel('plan')")
+        elif selector.startswith('#vents'): self.page.evaluate("window.AeroPlanUI.showPanel('air')")
+        elif selector.startswith('#cadr') or selector.startswith('#purifierDiameter'): self.page.evaluate("window.AeroPlanUI.showPanel('purifier')")
         locator=self.page.locator(selector)
         locator.fill(str(value))
         locator.press('Tab')
@@ -140,6 +143,7 @@ class SavedProjects(unittest.TestCase):
         self.page.locator('#saveLocal').click()
         self.assertEqual(self.projects()[0]['doc']['parameters']['cadr'],590)
         self.accept_next_dialog()
+        self.page.evaluate("window.AeroPlanUI.showPanel('projects')")
         self.page.locator('#deleteLocal').click()
         self.assertEqual(len(self.projects()),0)
         self.assertEqual(self.page.locator('#cadr').input_value(),'590')

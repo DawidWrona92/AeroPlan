@@ -150,6 +150,7 @@ class AeroPlanEditorTest(unittest.TestCase):
         self.assertEqual(result['sources'],1)
 
     def test_add_vent_with_canvas_click(self):
+        self.page.locator('.editbar-more summary').click()
         self.page.locator('[data-tool=supply]').click()
         self.page.locator('#field').scroll_into_view_if_needed()
         at=self.world(2,1.5)

@@ -128,3 +128,15 @@ Automatyczne testy Playwright w `tests/test_regressions.py` oraz `tests/test_edi
 - `tests/test_regressions.py` i `tests/test_editor_interactions.py` — testy przeglądarkowe.
 
 **Kolejne kroki dla dokładności:** walidacja na pomiarach w rzeczywistym mieszkaniu; geometria mebli i przeszkód; przepływ przez wywiew grawitacyjny i efekt kominowy; niezależna weryfikacja 3D na kilku przykładach; wielowariantowa optymalizacja ustawienia oczyszczacza (nie pojedynczy scenariusz pogody).
+
+## Eksperymentalny rework interfejsu — UI Lab
+
+Ta gałąź zawiera **eksperymentalny interfejs AeroPlan 2.12**, nieprzeznaczony do automatycznego scalania z `main`. Główne mechanizmy obliczeniowe nie zostały zmienione.
+
+- U góry: zawsze dostępny zapis i wczytanie nazwanych projektów.
+- Z lewej: cztery zakładki „Plan”, „Powietrze”, „Oczyszczacz”, „Projekty”.
+- Na środku: mapa, sterowanie symulacją, ranking i najważniejsze metryki.
+- W menu rozwijanym: rzadsze narzędzia edycji, zaawansowane wyniki i pełne ostrzeżenia modelu.
+- Na telefonie: kompaktowy panel z przyciskiem „Przejdź do mapy”.
+
+Do uruchomienia wymagany jest dodatkowy plik `ui-shell.js` w tym samym katalogu co `index.html`. Szczegóły i kryteria akceptacji znajdują się w [`UI-EXPERIMENT.md`](UI-EXPERIMENT.md).
