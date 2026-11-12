@@ -42,9 +42,11 @@ def fixture():
     js = js[:js.rfind('})();')] + HOOK + '})();'
     css = (BASE/'styles.css').read_text(encoding='utf-8')
     pressure = (BASE/'airflow-network.js').read_text(encoding='utf-8')
+    ui_shell = (BASE/'ui-shell.js').read_text(encoding='utf-8')
     return html.replace('<script src="airflow-network.js"></script>', '<script>'+pressure+'</script>') \
         .replace('<link rel="stylesheet" href="styles.css">', '<style>'+css+'</style>') \
-        .replace('<script src="app.js"></script>', '<script>'+js+'</script>')
+        .replace('<script src="app.js"></script>', '<script>'+js+'</script>') \
+        .replace('<script src="ui-shell.js"></script>', '<script>'+ui_shell+'</script>')
 
 ROOM_A = {'id':'A','name':'A','x':0,'y':0,'w':3,'h':3,'emission':0,'extraAch':0}
 ROOM_B = {'id':'B','name':'B','x':3,'y':0,'w':3,'h':3,'emission':0,'extraAch':0}
