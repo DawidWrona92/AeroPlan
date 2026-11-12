@@ -1,4 +1,4 @@
-# AeroPlan 2.11 — symulacja PM₂.₅ i przepływu w mieszkaniu
+# AeroPlan 2.12 — symulacja PM₂.₅ i przepływu w mieszkaniu
 
 AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porównania różnych lokalizacji oczyszczacza powietrza i sprawdzenia wpływu wentylacji. Od wersji 2.7 korzysta z **dwóch powiązanych uproszczonych modeli**:
 
@@ -6,6 +6,20 @@ AeroPlan to lokalna aplikacja HTML/CSS/JS do rysowania planu mieszkania, porówn
 2. **Lokalny dwuwymiarowy model transportu zanieczyszczeń**: pole prędkości na siatce, adwekcja–dyfuzja i bilans PM₂.₅, dopływ z zewnątrz, źródła pyłu, osadzanie i filtracja CADR. Kod w `app.js`.
 
 > **Nie jest to walidowane CFD 3D, rzeczywisty pomiar ani program projektowania instalacji wentylacyjnych.** Podane wartości ciśnień, prędkości, lokalnych stężeń i rankingi są orientacyjne. Bez danych o budynku, wietrze, meblach i urządzeniach nie ma podstaw do deklarowania dokładności absolutnej.
+
+## Nowość 2.12 — zapisz raz, korzystaj wielokrotnie
+
+W sekcji **7. Zapis i odczyt** znajdują się teraz:
+
+- **Zapisz projekt:** wpisz nazwę i zapisz kompletny układ mieszkania wraz z pozycją i parametrami oczyszczacza, pokojami, drzwiami, oknami, kratkami wentylacyjnymi oraz scenariuszem PM₂.₅ / wiatru. Można mieć do **20 nazwanych projektów**, np. różne rozważane oczyszczacze.
+- **Wczytaj wybrany:** wybierz projekt z listy i potwierdź zastąpienie aktualnej konfiguracji. Wczytanie korzysta z tej samej walidacji i transakcyjnego importu, co JSON.
+- **Usuń wybrany zapis:** usuwa tylko wybraną kopię projektu, nie zmieniając bieżącego planu.
+- **Automatyczne przywracanie ostatniej konfiguracji:** zmiany parametrów i elementów planu są zapisywane w pamięci przeglądarki i przywracane przy następnym otwarciu aplikacji. Automatyczny zapis nie zawiera bieżącej klatki symulacji, czasu ani historycznych wyników rankingu.
+- **Eksport/import JSON:** niezależny, przenośny plik zapasowy, zgodny z wcześniejszym formatem v7.
+
+**Ważne:** projekty w pamięci przeglądarki (`localStorage`) są zapisane **wyłącznie na urządzeniu, w danej przeglądarce i dla tego samego adresu strony / pliku**. Nie synchronizują się pomiędzy telefonem i komputerem. Czyszczenie danych przeglądarki, tryb prywatny oraz przeniesienie lub zmiana nazwy lokalnego pliku HTML mogą uniemożliwić dostęp do zapisów. `file://` ma zależne od przeglądarki zasady przechowywania; jeśli pamięć nie działa, interfejs wyświetla komunikat i nadal można korzystać z plików JSON. **Regularnie eksportuj JSON na dysk, zwłaszcza przed wymianą wersji AeroPlan.**
+
+Dodatkowe testy przeglądarkowe sprawdzają named projects, zastępowanie, przywrócenie sesji, zapamiętanie geometrii i CADR, błędny zapis, brak miejsca oraz niedostępną pamięć. Środowisko testowe ogranicza nawigację HTTP i `file://`, więc testy trwałości używają odpowiednika interfejsu Web Storage zachowującego zawartość między świeżymi stronami; nie stanowią potwierdzenia konkretnej polityki `file://` każdej przeglądarki.
 
 ## Uruchomienie
 

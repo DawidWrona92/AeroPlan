@@ -78,3 +78,14 @@
 .door-leak-settings input{width:100%;min-width:0;box-sizing:border-box}
 .door-flow-note{font-size:11px;line-height:1.45;color:var(--muted);margin:4px 0 0}
 @media(max-width:440px){.door-leak-settings{grid-template-columns:1fr}}
+
+/* AeroPlan 2.12 — local named project library */
+.local-projects{border:1px solid #39766c;background:#112b34;border-radius:11px;padding:12px;margin:9px 0 13px;display:grid;gap:10px}
+.local-projects .field{margin:0}
+.local-projects .field input,.local-projects .field select{width:100%;max-width:100%;box-sizing:border-box}
+.local-projects .rowbtn{display:flex;gap:8px;flex-wrap:wrap}
+.local-projects .rowbtn button{flex:1;min-width:130px}
+.local-projects .hint{font-size:11px;line-height:1.5;margin:0;color:#b9dacf}
+.local-projects button:disabled,.local-projects select:disabled{opacity:.5;cursor:not-allowed}
+
+.local-projects .hint.error{color:#ffb0b5}

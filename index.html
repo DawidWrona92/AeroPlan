@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AeroPlan 2.11 – przepływ powietrza i ciśnienie</title>
+<title>AeroPlan 2.12 – przepływ powietrza i ciśnienie</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -75,9 +75,16 @@
  </div>
  <div class="section">
   <h2>7. Zapis i odczyt</h2>
+  <div class="local-projects" aria-label="Projekty zapisane w przeglądarce">
+   <div class="field"><label for="projectName">Nazwa projektu (np. Moje mieszkanie – oczyszczacz A)</label><input id="projectName" type="text" maxlength="60" value="Moje mieszkanie" placeholder="Nazwa projektu"></div>
+   <div class="rowbtn"><button id="saveLocal" class="primary" type="button">Zapisz projekt</button><button id="loadLocal" type="button">Wczytaj wybrany</button></div>
+   <div class="field"><label for="savedProjects">Zapisane projekty</label><select id="savedProjects"><option value="">Brak zapisanych projektów</option></select></div>
+   <div class="rowbtn"><button id="deleteLocal" class="smallbtn" type="button">Usuń wybrany zapis</button></div>
+   <p id="localSaveInfo" class="hint" role="status" aria-live="polite">Ostatnia konfiguracja jest zapisywana automatycznie w tej przeglądarce.</p>
+  </div>
   <div class="rowbtn"><button id="saveJson" class="smallbtn">Eksportuj JSON</button><button id="loadJson" class="smallbtn">Importuj JSON</button></div>
   <input style="display:none" type="file" id="jsonFile" accept="application/json,.json">
-  <p class="hint">Zapis konfiguracji (pokoje, drzwi, stałe otwory, okna, kratki, stężenia, parametry oczyszczacza) do lokalnego pliku. Nie wysyła danych do sieci.</p>
+  <p class="hint">Eksport/import JSON to przenośna kopia zapasowa wszystkich ustawień: pokoje, okna, drzwi, wentylacja, oczyszczacz i parametry symulacji. Zapis w przeglądarce jest lokalny dla danej przeglądarki i adresu pliku/strony; może zniknąć po czyszczeniu danych lub zmianie lokalizacji pliku. Zalecamy regularnie eksportować JSON. Nie zapisujemy przebiegu czasowego symulacji.</p>
  </div>
 </aside>
 <main class="main">

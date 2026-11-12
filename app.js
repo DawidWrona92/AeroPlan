@@ -1213,8 +1213,140 @@ function applyImportedDocument(doc){
   restoreImportSnapshot(saved);throw error;
  }
 }
+// The local library stores configuration, not computed PM fields or time-series.
+// JSON export remains the portable backup and uses exactly the same project schema.
+const LOCAL_PROJECTS_KEY='aeroplan.projects.v1', LOCAL_DRAFT_KEY='aeroplan.draft.v1';
+const MAX_LOCAL_PROJECTS=20;
+let localStorageOK=false,autosaveTimer=null,restoringDraft=false;
+function currentProjectDocument(){
+ getInputs();
+ return {version:7,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};
+}
+function savedProjectList(){
+ const raw=localStorage.getItem(LOCAL_PROJECTS_KEY);
+ if(raw===null)return [];
+ const list=JSON.parse(raw);
+ if(!Array.isArray(list)||list.length>MAX_LOCAL_PROJECTS||list.some(x=>
+   !isRecord(x)||typeof x.id!=='string'||typeof x.name!=='string'||!isRecord(x.doc)))
+  throw Error('Niepoprawne dane zapisanych projektów. Wyeksportuj kopię JSON i sprawdź pamięć przeglądarki.');
+ return list;
+}
+function localInfo(message,failed=false){
+ const node=$('localSaveInfo');node.textContent=message;node.classList.toggle('error',failed);
+}
+function refreshSavedProjects(chosenId=null){
+ const select=$('savedProjects'),previous=chosenId??select.value;
+ const list=savedProjectList();select.replaceChildren();
+ const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=list.length?'Wybierz zapisany projekt…':'Brak zapisanych projektów';select.appendChild(placeholder);
+ for(const item of list.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))){
+  const opt=document.createElement('option');opt.value=item.id;
+  opt.textContent=item.name+(Number.isFinite(item.updatedAt)?' · '+new Date(item.updatedAt).toLocaleString('pl-PL'):'');
+  select.appendChild(opt);
+ }
+ select.value=list.some(x=>x.id===previous)?previous:'';
+ $('loadLocal').disabled=$('deleteLocal').disabled=!select.value;
+ return list;
+}
+function storageWrite(key,value){
+ localStorage.setItem(key,JSON.stringify(value));
+}
+function persistCurrentDraft(){
+ if(!localStorageOK||restoringDraft)return;
+ try{
+  storageWrite(LOCAL_DRAFT_KEY,{savedAt:Date.now(),name:$('projectName').value.slice(0,60),doc:currentProjectDocument()});
+  localInfo('Ostatnia konfiguracja zapisana automatycznie w tej przeglądarce.');
+ }catch(error){localInfo('Automatyczny zapis nie powiódł się: '+error.message+'. Eksportuj projekt do JSON.',true);}
+}
+function queueDraftSave(){
+ if(!localStorageOK||restoringDraft)return;
+ clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{autosaveTimer=null;persistCurrentDraft();},550);
+}
+function saveNamedProject(){
+ if(!localStorageOK)return;
+ const name=$('projectName').value.trim().slice(0,60);
+ if(!name){localInfo('Wpisz nazwę projektu, aby go zapisać.',true);$('projectName').focus();return;}
+ try{
+  const doc=currentProjectDocument();parseImportDocument(doc); // reject invalid geometry
+  const list=savedProjectList(),existing=list.find(p=>p.name.toLocaleLowerCase('pl-PL')===name.toLocaleLowerCase('pl-PL'));
+  if(existing&&!confirm('Nadpisać zapisany projekt „'+existing.name+'”?'))return;
+  if(!existing&&list.length>=MAX_LOCAL_PROJECTS)throw Error('Limit 20 projektów. Usuń zbędny zapis lub eksportuj go do JSON.');
+  const entry={id:existing?.id||uid(),name,updatedAt:Date.now(),doc};
+  const next=existing?list.map(p=>p.id===existing.id?entry:p):[...list,entry];
+  storageWrite(LOCAL_PROJECTS_KEY,next);
+  refreshSavedProjects(entry.id);persistCurrentDraft();
+  localInfo('Zapisano projekt „'+name+'”. Możesz go wczytać po ponownym otwarciu aplikacji.');
+  setStatus('Zapisano konfigurację projektu „'+name+'” w tej przeglądarce.');
+ }catch(error){localInfo('Nie udało się zapisać projektu: '+error.message+'. Możesz użyć eksportu JSON.',true);}
+}
+function loadNamedProject(){
+ if(!localStorageOK)return;
+ const id=$('savedProjects').value;if(!id)return;
+ try{
+  const entry=savedProjectList().find(x=>x.id===id);if(!entry)throw Error('Nie znaleziono wybranego projektu.');
+  if(!confirm('Wczytać „'+entry.name+'”? Zastąpi to bieżący plan i parametry. Zapisz je wcześniej, jeśli chcesz je zachować.'))return;
+  applyImportedDocument(entry.doc); // transactional import, never partially alters state
+  $('projectName').value=entry.name;
+  clearTimeout(autosaveTimer);autosaveTimer=null;
+  persistCurrentDraft();
+  localInfo('Wczytano projekt „'+entry.name+'”. Zachowano układ oraz ustawienia oczyszczacza.');
+  setStatus('Wczytano zapisany projekt „'+entry.name+'”. Symulacja rozpoczyna się od początku.');
+ }catch(error){localInfo('Nie udało się wczytać projektu: '+error.message+'. Bieżący plan zachowano.',true);}
+}
+function deleteNamedProject(){
+ if(!localStorageOK)return;
+ try{
+  const id=$('savedProjects').value,projects=savedProjectList(),entry=projects.find(x=>x.id===id);
+  if(!entry)return;
+  if(!confirm('Usunąć zapis „'+entry.name+'”? Ta operacja nie usuwa bieżącego planu.'))return;
+  storageWrite(LOCAL_PROJECTS_KEY,projects.filter(x=>x.id!==id));refreshSavedProjects('');
+  localInfo('Usunięto zapis „'+entry.name+'”. Bieżący plan pozostał bez zmian.');
+ }catch(error){localInfo('Nie udało się usunąć zapisu: '+error.message,true);}
+}
+function initializeLocalStorage(){
+ try{
+  const check='aeroplan.storage-check';localStorage.setItem(check,'1');localStorage.removeItem(check);
+  localStorageOK=true;refreshSavedProjects();
+  const raw=localStorage.getItem(LOCAL_DRAFT_KEY);
+  if(raw){
+   try{
+    const draft=JSON.parse(raw);
+    if(!isRecord(draft)||!isRecord(draft.doc))throw Error('Niepoprawny format ostatniej sesji.');
+    restoringDraft=true;
+    try{applyImportedDocument(draft.doc);}finally{restoringDraft=false;}
+    if(typeof draft.name==='string'&&draft.name.trim())$('projectName').value=draft.name.slice(0,60);
+    localInfo('Przywrócono ostatni plan i parametry z tej przeglądarki.');
+    setStatus('Przywrócono ostatnio zapisany układ mieszkania i ustawienia oczyszczacza.');
+   }catch(error){restoringDraft=false;localInfo('Nie udało się przywrócić ostatniej sesji: '+error.message+'. Dostępne są zapisane projekty i import JSON.',true);}
+  }
+ }catch(error){
+  localStorageOK=false;
+  for(const id of ['projectName','saveLocal','loadLocal','deleteLocal','savedProjects'])$(id).disabled=true;
+  localInfo('Pamięć przeglądarki jest niedostępna. Użyj eksportu i importu JSON, aby zachować swoje projekty.',true);
+ }
+}
+$('saveLocal').addEventListener('click',saveNamedProject);
+$('loadLocal').addEventListener('click',loadNamedProject);
+$('deleteLocal').addEventListener('click',deleteNamedProject);
+$('savedProjects').addEventListener('change',()=>{
+ const entry=savedProjectList().find(p=>p.id===$('savedProjects').value);
+ if(entry)$('projectName').value=entry.name;
+ $('loadLocal').disabled=$('deleteLocal').disabled=!entry;
+});
+// All UI editors change the model before these bubbling document handlers run.
+// Pointer release also covers canvas dragging and toggling windows/doors.
+document.addEventListener('change',e=>{
+ if(e.target.closest('.local-projects')||e.target.id==='jsonFile')return;
+ queueDraftSave();
+});
+document.addEventListener('click',e=>{
+ if(!e.target.closest('.local-projects'))queueDraftSave();
+});
+document.addEventListener('pointerup',e=>{
+ if(e.target===canvas)queueDraftSave();
+});
+window.addEventListener('pagehide',()=>{clearTimeout(autosaveTimer);persistCurrentDraft();});
 $('saveJson').addEventListener('click',()=>{
- getInputs();const data={version:7,rooms,doors,windows,vents,purifier,parameters:userParameters,outsideManual};
+ const data=currentProjectDocument();
  download('aeroplan-mieszkanie.json',new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}));
 });
 $('loadJson').addEventListener('click',()=>$('jsonFile').click());
@@ -1223,10 +1355,11 @@ $('jsonFile').addEventListener('change',async e=>{
  try{
   if(file.size>5*1024*1024)throw Error('Plik jest zbyt duży (limit 5 MB).');
   applyImportedDocument(JSON.parse(await file.text()));
+  persistCurrentDraft();
   setStatus('Zaimportowano konfigurację.');
  }catch(error){setStatus('Nie udało się zaimportować JSON: '+error.message,true);}
  e.target.value='';
 });
- preset();requestAnimationFrame(tick);
+ preset();initializeLocalStorage();requestAnimationFrame(tick);
 })();
 
